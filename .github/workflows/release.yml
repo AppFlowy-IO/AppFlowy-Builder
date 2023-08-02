@@ -1,0 +1,20 @@
+name: Run Supabase Migration Test
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  publish:
+    environment: SUPABASE_STAGE
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          repository: AppFlowy-IO/AppFlowy
