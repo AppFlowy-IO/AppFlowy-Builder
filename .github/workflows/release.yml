@@ -28,6 +28,7 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) (${{ matrix.environment }}) [${{ matrix.job.extra-build-args }}]
     environment: ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
+    needs: create-release
     env:
       SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
       SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
