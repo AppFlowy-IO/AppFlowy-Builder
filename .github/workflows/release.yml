@@ -29,8 +29,9 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
 
       - name: Create Env file
-        working-directory: AppFlowy-IO/AppFlowy/frontend/appflowy_flutter
+#        working-directory: AppFlowy/frontend/appflowy_flutter
         run:
+          ls
           touch .env
           echo "SUPABASE_DB=$SUPABASE_DB" >> .env
           echo "SUPABASE_DB_PORT=$SUPABASE_DB_PORT" >> .env
