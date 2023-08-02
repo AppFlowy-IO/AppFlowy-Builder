@@ -1,4 +1,4 @@
-name: Run Supabase Migration Test
+name: Build AppFlowy Application Staging
 
 on:
   push:
@@ -13,23 +13,97 @@ jobs:
   publish:
     environment: SUPABASE_STAGE
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
+      SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
+      SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.ref_name }}/macos/Release
+      MACOS_X86_ZIP_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64.zip
+      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
           repository: AppFlowy-IO/AppFlowy
-
-      - name: Read env
-        env:
-          SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
-          SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
-          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Create Env file
+        working-directory: AppFlowy/frontend/appflowy_flutter
         run:
-          touch .env.dev
-          echo "SUPABASE_DB=$SUPABASE_DB" >> .env.dev
-          echo "SUPABASE_DB_PORT=$SUPABASE_DB_PORT" >> .env.dev
-          echo "SUPABASE_DB_USER=$SUPABASE_DB_USER" >> .env.dev
-          echo "SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD" >> .env.dev
-          cat .env.dev
+          touch .env
+          echo "SUPABASE_DB=$SUPABASE_DB" >> .env
+          echo "SUPABASE_DB_PORT=$SUPABASE_DB_PORT" >> .env
+          echo "SUPABASE_DB_USER=$SUPABASE_DB_USER" >> .env
+          echo "SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD" >> .env
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.job.target }}
+          override: true
+          components: rustfmt
+          profile: minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: appflowy-lib-cache
+          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
+
+      - name: Install prerequisites
+        working-directory: AppFlowy/frontend
+        run: |
+          cargo install --force cargo-make
+          cargo install --force duckscript_cli
+
+      - name: Build AppFlowy
+        working-directory: AppFlowy/frontend
+        run: |
+          flutter config --enable-macos-desktop
+          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ github.ref_name }}
+
+      - name: Create macOS dmg
+        working-directory: AppFlowy/frontend
+        run: |
+          brew install create-dmg
+          create-dmg \
+          --volname ${{ env.MACOS_DMG_NAME }} \
+          --hide-extension "AppFlowy.app" \
+          --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
+          --window-size 600 450 \
+          --icon-size 94 \
+          --icon "AppFlowy.app" 141 249 \
+          --app-drop-link 458 249 \
+          "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
+          "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+
+      - name: Archive Asset
+        working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
+        run: zip --symlinks -qr ${{ env.MACOS_X86_ZIP_NAME }} AppFlowy.app
+
+      - name: Upload Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_ZIP_NAME }}
+          asset_name: ${{ env.MACOS_X86_ZIP_NAME }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload DMG Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
+          asset_name: ${{ env.MACOS_DMG_NAME }}.dmg
+          asset_content_type: application/octet-stream
 
