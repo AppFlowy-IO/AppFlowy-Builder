@@ -27,10 +27,9 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: AppFlowy-IO/AppFlowy
-          token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: Create Env file
-        working-directory: AppFlowy/frontend/appflowy_flutter
+        working-directory: AppFlowy-IO/AppFlowy/frontend/appflowy_flutter
         run:
           touch .env
           echo "SUPABASE_DB=$SUPABASE_DB" >> .env
