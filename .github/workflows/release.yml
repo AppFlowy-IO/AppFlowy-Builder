@@ -1,16 +1,16 @@
 name: Build AppFlowy Application Staging
 
 on:
-#  push:
-#    tags:
-#      - "*"
   push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
+    tags:
+      - "*"
+#  push:
+#    branches:
+#      - main
+#
+#  pull_request:
+#    branches:
+#      - main
 
 env:
   FLUTTER_VERSION: "3.10.1"
