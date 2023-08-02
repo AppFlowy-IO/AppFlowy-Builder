@@ -2,12 +2,8 @@ name: Build AppFlowy Application Staging
 
 on:
   push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
+    tags:
+      - "*"
 
 env:
   FLUTTER_VERSION: "3.10.1"
@@ -15,17 +11,24 @@ env:
 
 jobs:
   publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [SUPABASE_STAGE, SUPABASE_PRODUCTION]
+        job:
+          - { target: x86_64-apple-darwin, os: macos-11, extra-build-args: "" }
 #    https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-    environment: SUPABASE_STAGE
-    runs-on: ubuntu-latest
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) (${{ matrix.environment }}) [${{ matrix.job.extra-build-args }}]
+    environment: ${{ matrix.environment }}
+    runs-on: ${{ matrix.job.os }}
     env:
       SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
       SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
       SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.ref_name }}/macos/Release
-      MACOS_X86_ZIP_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64.zip
-      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64
+      MACOS_X86_ZIP_NAME: AppFlowy_${{ github.ref_name }}_${{ matrix.environment }}_macos-x86_64.zip
+      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_${{ matrix.environment }}_macos-x86_64
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
