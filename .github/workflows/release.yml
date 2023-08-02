@@ -11,6 +11,7 @@ on:
 
 jobs:
   publish:
+#    https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
     environment: SUPABASE_STAGE
     runs-on: ubuntu-latest
     env:
@@ -26,6 +27,8 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: AppFlowy-IO/AppFlowy
+          token: ${{ secrets.ACCESS_TOKEN }}
+
       - name: Create Env file
         working-directory: AppFlowy/frontend/appflowy_flutter
         run:
