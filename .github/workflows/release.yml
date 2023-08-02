@@ -18,3 +18,18 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: AppFlowy-IO/AppFlowy
+
+      - name: Read env
+        env:
+          SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
+          SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run:
+          touch .env.dev
+          echo "SUPABASE_DB=$SUPABASE_DB" >> .env.dev
+          echo "SUPABASE_DB_PORT=$SUPABASE_DB_PORT" >> .env.dev
+          echo "SUPABASE_DB_USER=$SUPABASE_DB_USER" >> .env.dev
+          echo "SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD" >> .env.dev
+          cat .env.dev
+
