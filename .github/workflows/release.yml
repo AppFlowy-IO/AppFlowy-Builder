@@ -78,6 +78,7 @@ jobs:
           echo "SUPABASE_DB_USER=$SUPABASE_DB_USER" >> .env
           echo "SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD" >> .env
           cat .env
+          ls -la
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
