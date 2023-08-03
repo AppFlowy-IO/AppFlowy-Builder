@@ -53,6 +53,7 @@ jobs:
 #    https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) (${{ matrix.environment }}) [${{ matrix.job.extra-build-args }}]
     environment: ${{ matrix.environment }}
+    needs: create-release
     runs-on: ${{ matrix.job.os }}
     env:
       SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
