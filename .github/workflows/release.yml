@@ -15,9 +15,35 @@ on:
 env:
   FLUTTER_VERSION: "3.10.1"
   RUST_TOOLCHAIN: "1.70"
+  RELEASE_NOTES_PATH: /tmp/release_notes
 
 jobs:
   create-release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_NOTES_PATH: /tmp/release_notes
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build release notes
+        run: |
+          touch ${{ env.RELEASE_NOTES_PATH }}
+          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ github.ref_name }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
+
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: v${{ github.ref }}
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
+
+  publish:
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +54,6 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) (${{ matrix.environment }}) [${{ matrix.job.extra-build-args }}]
     environment: ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
-    needs: create-release
     env:
       SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
       SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
