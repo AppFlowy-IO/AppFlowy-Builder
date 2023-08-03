@@ -72,13 +72,13 @@ jobs:
       - name: Create Env file
         working-directory: frontend/appflowy_flutter
         run:
-          touch .env
-          echo "SUPABASE_DB=$SUPABASE_DB" >> .env
-          echo "SUPABASE_DB_PORT=$SUPABASE_DB_PORT" >> .env
-          echo "SUPABASE_DB_USER=$SUPABASE_DB_USER" >> .env
-          echo "SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD" >> .env
-          cat .env
           ls -la
+          touch .env
+          echo SUPABASE_DB=$SUPABASE_DB >> .env
+          echo SUPABASE_DB_PORT=$SUPABASE_DB_PORT >> .env
+          echo SUPABASE_DB_USER=$SUPABASE_DB_USER >> .env
+          echo SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD >> .env
+          cat .env
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
