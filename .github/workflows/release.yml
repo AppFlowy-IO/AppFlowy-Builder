@@ -48,10 +48,6 @@ jobs:
     needs: create-release
     runs-on: ${{ matrix.job.os }}
     env:
-      SUPABASE_DB: ${{ secrets.SUPABASE_DB }}
-      SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
-      SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.ref_name }}/macos/Release
       MACOS_X86_ZIP_NAME: AppFlowy_${{ github.ref_name }}_${{ matrix.environment }}_macos-x86_64.zip
       MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_${{ matrix.environment }}_macos-x86_64
@@ -64,10 +60,9 @@ jobs:
       - name: Create Env file
         run: |
           touch .env
-          echo SUPABASE_DB=${{ secrets.SUPABASE_DB }} >> .env
-          echo SUPABASE_DB_PORT=${{ secrets.SUPABASE_DB_PORT }} >> .env
-          echo SUPABASE_DB_USER=${{ secrets.SUPABASE_DB_USER }} >> .env
-          echo SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }} >> .env
+          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
+          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
+          echo SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }} >> .env
           cat .env
           ls -la
         working-directory: frontend/appflowy_flutter
