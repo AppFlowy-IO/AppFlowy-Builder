@@ -68,6 +68,8 @@ jobs:
           echo SUPABASE_DB_PORT=${{ secrets.SUPABASE_DB_PORT }} >> .env
           echo SUPABASE_DB_USER=${{ secrets.SUPABASE_DB_USER }} >> .env
           echo SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }} >> .env
+          cat .env
+          ls -la
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
