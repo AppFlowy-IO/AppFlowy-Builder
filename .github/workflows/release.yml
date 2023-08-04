@@ -71,13 +71,11 @@ jobs:
 
       - name: Create Env file
         run: |
-          ls -la
           touch .env
           echo SUPABASE_DB=${{ secrets.SUPABASE_DB }} >> .env
           echo SUPABASE_DB_PORT=${{ secrets.SUPABASE_DB_PORT }} >> .env
           echo SUPABASE_DB_USER=${{ secrets.SUPABASE_DB_USER }} >> .env
           echo SUPABASE_DB_PASSWORD=${{ secrets.SUPABASE_DB_PASSWORD }} >> .env
-          cat .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
