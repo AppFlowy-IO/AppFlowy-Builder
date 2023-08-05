@@ -331,13 +331,13 @@ jobs:
       - name: Build Linux package
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: |
-          mv AppFlowy package/opt/
+          mv AppFlowy-Builder package/opt/
           cd package
 
           # Update Exec & icon path in desktop entry
-          grep -rl "\[CHANGE_THIS\]" ./opt/AppFlowy/appflowy.desktop.temp | xargs sed -i "s/\[CHANGE_THIS\]/\/opt/"
+          grep -rl "\[CHANGE_THIS\]" ./opt/AppFlowy-Builder/appflowy.desktop.temp | xargs sed -i "s/\[CHANGE_THIS\]/\/opt/"
           # Add desktop entry in package
-          mv ./opt/AppFlowy/appflowy.desktop.temp ./usr/share/applications/appflowy.desktop
+          mv ./opt/AppFlowy-Builder/appflowy.desktop.temp ./usr/share/applications/appflowy.desktop
 
           # Build
           cd ../ && dpkg-deb --build --root-owner-group -Z xz package ${{ env.LINUX_PACKAGE_NAME }}
@@ -379,3 +379,4 @@ jobs:
           fields: repo,message,commit,author,eventName,ref,workflow,job,took
           env:
             SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          if: always()
