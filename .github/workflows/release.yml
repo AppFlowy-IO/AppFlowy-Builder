@@ -12,6 +12,8 @@ env:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
+    environment: SUPABASE_PRODUCTION
     env:
       RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
@@ -43,7 +45,7 @@ jobs:
       fail-fast: false
       matrix:
 #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE_STAGE, SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
@@ -144,7 +146,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_STAGE, SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
@@ -248,7 +250,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_STAGE, SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION]
         job:
           - {
             arch: x86_64,
