@@ -12,8 +12,7 @@ env:
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-    environment: SUPABASE_PRODUCTION
+    #https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
     env:
       RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
@@ -41,6 +40,7 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     needs: create-release
     runs-on: ${{ matrix.job.os }}
+    environment: SUPABASE_PRODUCTION
     strategy:
       fail-fast: false
       matrix:
@@ -142,6 +142,7 @@ jobs:
   build-for-macOS:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
+    environment: SUPABASE_PRODUCTION
     needs: create-release
     strategy:
       fail-fast: false
@@ -246,6 +247,7 @@ jobs:
   build-for-linux:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
+    environment: SUPABASE_PRODUCTION
     needs: create-release
     strategy:
       fail-fast: false
@@ -381,7 +383,7 @@ jobs:
           status: ${{ job.status }}
           text: |
             Workflow ${{ github.workflow }} in repository ${{ github.repository }} has completed. 
-            Check the release package at https://github.com/${{ github.repository }}/releases
+            Check the release package at https://github.com/${{ github.repository }}/releases/tag/${{ github.ref }}
           fields: repo,message,commit,author,eventName,ref,workflow,job,took
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
