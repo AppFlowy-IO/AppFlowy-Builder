@@ -36,12 +36,13 @@ jobs:
           body_path: ${{ env.RELEASE_NOTES_PATH }}
 
   build-for-windows:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     needs: create-release
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
       matrix:
+#        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
         environment: [SUPABASE_STAGE, SUPABASE_PRODUCTION]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
@@ -140,7 +141,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-for-macOS:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-args }}]
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
     needs: create-release
     strategy:
@@ -148,7 +149,7 @@ jobs:
       matrix:
         environment: [SUPABASE_STAGE, SUPABASE_PRODUCTION]
         job:
-          - { target: x86_64-apple-darwin, os: macos-11, extra-build-args: "" }
+          - { target: x86_64-apple-darwin, os: macos-11 }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.ref_name }}/macos/Release
       MACOS_X86_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_macos-x86_64.zip
@@ -243,7 +244,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-for-linux:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) [${{ matrix.job.extra-build-args }}]
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
     needs: create-release
     strategy:
@@ -255,7 +256,6 @@ jobs:
             arch: x86_64,
             target: x86_64-unknown-linux-gnu,
             os: ubuntu-20.04,
-            extra-build-args: "",
             flutter_profile: production-linux-x86_64,
           }
     env:
