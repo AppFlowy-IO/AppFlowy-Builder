@@ -365,3 +365,17 @@ jobs:
           asset_name: ${{ env.LINUX_PACKAGE_NAME }}
           asset_content_type: application/octet-stream
 
+  notify-slack:
+    runs-on: ubuntu-latest
+    needs: [build-for-linux, build-for-windows, build-for-macOS]
+    steps:
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Workflow ${{ github.workflow }} in repository ${{ github.repository }} has completed. 
+            Check the release package at https://github.com/${{ github.repository }}/releases
+          fields: repo,message,commit,author,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
