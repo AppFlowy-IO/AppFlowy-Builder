@@ -115,7 +115,6 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           VERSION="${TAG%_*}"
-          echo $VERSION
           iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=$VERSION
 
       - name: Upload Asset
@@ -166,6 +165,9 @@ jobs:
           echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
           echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
           echo SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }} >> .env
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG%_*}"
+          echo $VERSION
           ls -al
           cat .env
         working-directory: frontend/appflowy_flutter
