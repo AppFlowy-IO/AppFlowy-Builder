@@ -17,7 +17,7 @@ jobs:
       RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
       version: ${{ needs.create-release.outputs.version }}
-      branch_name: ${{ steps.parse_tag.outputs.branch_name }}
+      branch_name: ${{ needs.create-release.outputs.branch_name }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Parse Tag
