@@ -24,18 +24,12 @@ jobs:
         id: parse_tag
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          # If tag contains an underscore, split into VERSION and BRANCH_NAME
-          if [[ $TAG_NAME == *"_*" ]]; then
-            VERSION="${TAG_NAME%_*}"  # Everything before the last underscore
-            BRANCH_NAME="${TAG_NAME##*_}"  # Everything after the last underscore
-          else
-            VERSION=$TAG_NAME
-            BRANCH_NAME="main"
-          fi
+          VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
+          BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
+          echo $VERSION
+          echo $BRANCH_NAME 
           echo "::set-output name=version::$VERSION"
           echo "::set-output name=branch_name::$BRANCH_NAME"
-          echo $VERSION
-          echo $BRANCH_NAME
 
       - name: Checkout
         uses: actions/checkout@v2
