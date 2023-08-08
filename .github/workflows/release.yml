@@ -24,12 +24,17 @@ jobs:
         id: parse_tag
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
-          BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
-          echo $VERSION
-          echo $BRANCH_NAME 
+          if [[ $TAG_NAME == *"_*" ]]; then
+            VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
+            BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
+          else
+            VERSION=$TAG_NAME
+            BRANCH_NAME="main"
+          fi
           echo "::set-output name=version::$VERSION"
           echo "::set-output name=branch_name::$BRANCH_NAME"
+          echo $VERSION
+          echo $BRANCH_NAME
 
       - name: Checkout
         uses: actions/checkout@v2
