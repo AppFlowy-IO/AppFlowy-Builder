@@ -37,7 +37,7 @@ jobs:
       - name: Build release notes
         run: |
           touch ${{ env.RELEASE_NOTES_PATH }}
-          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ needs.create-release.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
+          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
 
       - name: Create release
         id: create_release
