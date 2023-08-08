@@ -24,11 +24,12 @@ jobs:
         id: parse_tag
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          TAG_ARRAY=(${TAG_NAME//_/ })
-          echo ${TAG_ARRAY[0]} 
-          echo ${TAG_ARRAY[1]} 
-          echo "::set-output name=version::${TAG_ARRAY[0]}"
-          echo "::set-output name=branch_name::${TAG_ARRAY[1]}"
+          VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
+          BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
+          echo $VERSION
+          echo $BRANCH_NAME 
+          echo "::set-output name=version::$VERSION"
+          echo "::set-output name=branch_name::$BRANCH_NAME"
 
       - name: Checkout
         uses: actions/checkout@v2
