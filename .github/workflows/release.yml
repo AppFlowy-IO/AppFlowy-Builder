@@ -16,7 +16,7 @@ jobs:
     env:
       RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
-      version: ${{ steps.parse_tag.outputs.version }}
+      version: ${{ needs.create-release.outputs.version }}
       branch_name: ${{ steps.parse_tag.outputs.branch_name }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
@@ -34,7 +34,7 @@ jobs:
       - name: Build release notes
         run: |
           touch ${{ env.RELEASE_NOTES_PATH }}
-          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
+          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ needs.create-release.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
 
       - name: Create release
         id: create_release
@@ -43,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
-          release_name: ${{ steps.parse_tag.outputs.version }}
+          release_name: ${{ needs.create-release.outputs.version }}
           body_path: ${{ env.RELEASE_NOTES_PATH }}
 
   build-for-windows:
@@ -59,7 +59,7 @@ jobs:
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
-      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ steps.parse_tag.outputs.version }}\windows
+      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.create-release.outputs.version }}\windows
       WINDOWS_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_windows-x86_64.zip
       WINDOWS_INSTALLER_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_windows-x86_64
 
@@ -110,7 +110,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-windows-desktop
-          cargo make --env APP_VERSION=${{ steps.parse_tag.outputs.version }} --profile production-windows-x86 appflowy
+          cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-windows-x86 appflowy
 
       - name: Archive Asset
         uses: vimtor/action-zip@v1
@@ -126,7 +126,7 @@ jobs:
       - name: Build installer executable
         working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
         run: |
-          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ steps.parse_tag.outputs.version }}
+          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.create-release.outputs.version }}
 
       - name: Upload Asset
         id: upload-release-asset
@@ -162,7 +162,7 @@ jobs:
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ steps.parse_tag.outputs.version }}/macos/Release
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/macos/Release
       MACOS_X86_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_macos-x86_64.zip
       MACOS_DMG_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_macos-x86_64
     steps:
@@ -211,7 +211,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ steps.parse_tag.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ needs.create-release.outputs.version }}
 
       - name: Create macOS dmg
         run: |
@@ -268,7 +268,7 @@ jobs:
             flutter_profile: production-linux-x86_64,
           }
     env:
-      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ steps.parse_tag.outputs.version }}/linux/Release
+      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release
       LINUX_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ matrix.job.target }}_${{ matrix.job.os }}.tar.gz
       LINUX_PACKAGE_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_${{ matrix.job.os }}.deb
     steps:
@@ -329,7 +329,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-linux-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ steps.parse_tag.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ needs.create-release.outputs.version }}
 
       - name: Archive Assert
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
@@ -342,7 +342,7 @@ jobs:
           mkdir -p ../${{ env.LINUX_APP_RELEASE_PATH }}/package/usr/share/applications
           cp -r ./scripts/linux_installer ../${{ env.LINUX_APP_RELEASE_PATH }}/package/DEBIAN
           cd ../${{ env.LINUX_APP_RELEASE_PATH }}/package/DEBIAN
-          grep -rl "\[CHANGE_THIS\]" ./control | xargs sed -i "s/\[CHANGE_THIS\]/${{ steps.parse_tag.outputs.version }}/"
+          grep -rl "\[CHANGE_THIS\]" ./control | xargs sed -i "s/\[CHANGE_THIS\]/${{ needs.create-release.outputs.version }}/"
           chmod 0755 {postinst,postrm}
 
       - name: Build Linux package
