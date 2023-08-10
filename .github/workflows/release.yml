@@ -53,7 +53,7 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     needs: create-release
     runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.job.environment }}
+    environment: ${{ matrix.environment }}
     strategy:
       fail-fast: false
       matrix:
@@ -156,7 +156,7 @@ jobs:
   build-for-macOS:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.job.environment }}
+    environment: ${{ matrix.environment }}
     needs: create-release
     strategy:
       fail-fast: false
@@ -257,7 +257,7 @@ jobs:
   build-for-linux:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.job.environment }}
+    environment: ${{ matrix.environment }}
     needs: create-release
     strategy:
       fail-fast: false
