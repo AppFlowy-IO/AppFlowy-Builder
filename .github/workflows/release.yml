@@ -53,12 +53,12 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     needs: create-release
     runs-on: ${{ matrix.job.os }}
-    environment: SUPABASE_PRODUCTION
+    environment: ${{ matrix.job.environment }}
     strategy:
       fail-fast: false
       matrix:
 #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGING]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
@@ -156,12 +156,12 @@ jobs:
   build-for-macOS:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
-    environment: SUPABASE_PRODUCTION
+    environment: ${{ matrix.job.environment }}
     needs: create-release
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGING]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
@@ -257,12 +257,12 @@ jobs:
   build-for-linux:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
-    environment: SUPABASE_PRODUCTION
+    environment: ${{ matrix.job.environment }}
     needs: create-release
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGING]
         job:
           - {
             arch: x86_64,
