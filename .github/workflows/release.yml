@@ -214,7 +214,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ needs.create-release.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.create-release.outputs.version }}
 
       - name: Codesign AppFlowy
         run: |
@@ -346,7 +346,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-linux-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart . ${{ needs.create-release.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.create-release.outputs.version }}
 
       - name: Archive Assert
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
