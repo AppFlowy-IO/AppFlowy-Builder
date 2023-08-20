@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
 #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION, LOCAL]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
@@ -161,7 +161,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION, LOCAL]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
@@ -216,6 +216,16 @@ jobs:
           flutter config --enable-macos-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart . ${{ needs.create-release.outputs.version }}
 
+      - name: Codesign AppFlowy
+        run: |
+          echo ${{ secrets.MACOS_CERTIFICATE }} | base64 --decode > certificate.p12
+          security create-keychain -p action build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p action build.keychain
+          security import certificate.p12 -k build.keychain -P ${{ secrets.MACOS_CERTIFICATE_PWD }} -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
+          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+
       - name: Create macOS dmg
         run: |
           brew install create-dmg
@@ -229,6 +239,10 @@ jobs:
           --app-drop-link 458 249 \
           "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
           "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+
+      - name: Notarize AppFlowy
+        run: |
+          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
       - name: Archive Asset
         working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
@@ -262,7 +276,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE_PRODUCTION, LOCAL]
         job:
           - {
             arch: x86_64,
