@@ -58,13 +58,13 @@ jobs:
       fail-fast: false
       matrix:
 #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE_PRODUCTION, LOCAL]
+        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGE]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
       WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.create-release.outputs.version }}\windows
-      WINDOWS_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_windows-x86_64.zip
-      WINDOWS_INSTALLER_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_windows-x86_64
+      WINDOWS_ZIP_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64.zip
+      WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
 
     steps:
       - name: Checkout source code
@@ -161,13 +161,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION, LOCAL]
+        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGE]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/macos/Release
-      MACOS_X86_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_macos-x86_64.zip
-      MACOS_DMG_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_macos-x86_64
+      MACOS_X86_ZIP_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64.zip
+      MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
@@ -276,7 +276,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION, LOCAL]
+        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGE]
         job:
           - {
             arch: x86_64,
@@ -286,8 +286,8 @@ jobs:
           }
     env:
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release
-      LINUX_ZIP_NAME: AppFlowy_${{ matrix.environment }}_${{ matrix.job.target }}_${{ matrix.job.os }}.tar.gz
-      LINUX_PACKAGE_NAME: AppFlowy_${{ matrix.environment }}_${{ github.ref_name }}_${{ matrix.job.os }}.deb
+      LINUX_ZIP_NAME: ${{ matrix.environment }}_AppFlowy_${{ matrix.job.target }}_${{ matrix.job.os }}.tar.gz
+      LINUX_PACKAGE_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_${{ matrix.job.os }}.deb
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
