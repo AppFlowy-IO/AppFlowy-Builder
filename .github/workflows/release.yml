@@ -348,33 +348,14 @@ jobs:
           flutter config --enable-linux-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.create-release.outputs.version }}
 
-      - name: Archive Assert
+      - name: Archive Asset
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
 
-      - name: Configuring Linux Package
+      - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
-          mkdir -p ../${{ env.LINUX_APP_RELEASE_PATH }}/package/opt
-          mkdir -p ../${{ env.LINUX_APP_RELEASE_PATH }}/package/usr/share/applications
-          cp -r ./scripts/linux_installer ../${{ env.LINUX_APP_RELEASE_PATH }}/package/DEBIAN
-          cd ../${{ env.LINUX_APP_RELEASE_PATH }}/package/DEBIAN
-          grep -rl "\[CHANGE_THIS\]" ./control | xargs sed -i "s/\[CHANGE_THIS\]/${{ needs.create-release.outputs.version }}/"
-          chmod 0755 {postinst,postrm}
-
-      - name: Build Linux package
-        working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: |
-          mv AppFlowy package/opt/
-          cd package
-
-          # Update Exec & icon path in desktop entry
-          grep -rl "\[CHANGE_THIS\]" ./opt/AppFlowy/appflowy.desktop.temp | xargs sed -i "s/\[CHANGE_THIS\]/\/opt/"
-          # Add desktop entry in package
-          mv ./opt/AppFlowy/appflowy.desktop.temp ./usr/share/applications/appflowy.desktop
-
-          # Build
-          cd ../ && dpkg-deb --build --root-owner-group -Z xz package ${{ env.LINUX_PACKAGE_NAME }}
+          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ github.ref_name }}/linux/Release ${{ github.ref_name }} ${{ env.LINUX_PACKAGE_NAME }}
 
       - name: Upload Asset
         id: upload-release-asset
