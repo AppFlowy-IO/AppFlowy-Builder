@@ -1,4 +1,6 @@
-# AppFlowy-Builder
+# AppFlowy-Binaries
+⚠️ This repository is exclusively for internal release package builds. Please refrain from creating PRs.
+
 
 Clone this repository to your local machine. 
 ```shell
