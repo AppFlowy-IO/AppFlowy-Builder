@@ -4,7 +4,7 @@
 
 Clone this repository to your local machine. 
 ```shell
-git clone git@github.com:AppFlowy-IO/AppFlowy-Builder.git
+git clone git@github.com:AppFlowy-IO/AppFlowy-Binaries.git
 ```
 
 and then you can use tag to trigger the build process. 
