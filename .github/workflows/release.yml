@@ -75,9 +75,10 @@ jobs:
 
       - name: Create Env file
         run: |
-          touch .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
+          cp dev.env .env 
+          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=1|' .env
+          sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+          sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
@@ -176,9 +177,10 @@ jobs:
 
       - name: Create Env file
         run: |
-          touch .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
+          cp dev.env .env 
+          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=1|' .env
+          sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+          sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
@@ -295,9 +297,10 @@ jobs:
 
       - name: Create Env file
         run: |
-          touch .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
+          cp dev.env .env 
+          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=1|' .env
+          sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+          sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
