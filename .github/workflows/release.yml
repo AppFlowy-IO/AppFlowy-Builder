@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
 #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGE]
+        environment: [SUPABASE_PRODUCTION]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
@@ -75,10 +75,10 @@ jobs:
 
       - name: Create Env file
         run: |
-          cp dev.env .env 
-          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=1|' .env
-          sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
-          sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
+          touch .env
+          echo CLOUD_TYPE=1 >> .env
+          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
+          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
@@ -161,7 +161,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGE]
+        environment: [SUPABASE_PRODUCTION]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
@@ -177,10 +177,10 @@ jobs:
 
       - name: Create Env file
         run: |
-          cp dev.env .env 
-          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=1|' .env
-          sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
-          sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
+          touch .env
+          echo CLOUD_TYPE=1 >> .env
+          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
+          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
@@ -276,7 +276,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION, SUPABASE_STAGE]
+        environment: [SUPABASE_PRODUCTION]
         job:
           - {
             arch: x86_64,
@@ -297,10 +297,10 @@ jobs:
 
       - name: Create Env file
         run: |
-          cp dev.env .env 
-          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=1|' .env
-          sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
-          sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
+          touch .env
+          echo CLOUD_TYPE=1 >> .env
+          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
+          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
         working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
