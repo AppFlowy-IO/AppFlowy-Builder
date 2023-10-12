@@ -27,7 +27,7 @@ jobs:
           VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
           BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
           echo $VERSION
-          echo $BRANCH_NAME 
+          echo $BRANCH_NAME
           echo "::set-output name=version::$VERSION"
           echo "::set-output name=branch_name::$BRANCH_NAME"
 
@@ -286,8 +286,10 @@ jobs:
           }
     env:
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release
-      LINUX_ZIP_NAME: ${{ matrix.environment }}_AppFlowy_${{ matrix.job.target }}_${{ matrix.job.os }}.tar.gz
-      LINUX_PACKAGE_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_${{ matrix.job.os }}.deb
+      LINUX_ZIP_NAME: ${{ matrix.environment }}-AppFlowy-x86_64.tar.gz
+      LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.deb
+      LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.rpm
+      LINUX_PACKAGE_TMP_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-2.x86_64.rpm
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
@@ -330,7 +332,8 @@ jobs:
           sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
           sudo apt-get update
           sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
-          sudo apt-get install keybinder-3.0
+          sudo apt-get install keybinder-3.0 libnotify-dev
+          sudo apt-get -y install alien
           source $HOME/.cargo/env
           cargo install --force cargo-make
           cargo install --force duckscript_cli
@@ -340,7 +343,7 @@ jobs:
         if: ${{ matrix.job.target == 'aarch64-unknown-linux-gnu' }}
         working-directory: frontend
         run: |
-          sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libgtk-3-0
 
       - name: Build AppFlowy
         working-directory: frontend
@@ -355,7 +358,16 @@ jobs:
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release ${{ needs.create-release.outputs.version }} ${{ env.LINUX_PACKAGE_NAME }}
+          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release ${{ needs.create-release.outputs.version }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
+
+      - name: Build Linux package (.rpm)
+        working-directory:
+        run: |
+          ls -a
+          sudo alien -r ${{ env.LINUX_PACKAGE_DEB_NAME }}
+          echo '------------'
+          cp -r ${{ env.LINUX_PACKAGE_TMP_RPM_NAME }} ${{ env.LINUX_PACKAGE_RPM_NAME }}
+          ls -a
 
       - name: Upload Asset
         id: upload-release-asset
@@ -368,16 +380,26 @@ jobs:
           asset_name: ${{ env.LINUX_ZIP_NAME }}
           asset_content_type: application/octet-stream
 
-      - name: Upload Asset Install Package
-        id: upload-release-asset-install-package
+      - name: Upload Debian package
+        id: upload-release-asset-install-package-deb
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_NAME }}
+          asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_DEB_NAME }}
+          asset_name: ${{ env.LINUX_PACKAGE_DEB_NAME }}
+          asset_content_type: application/octet-stream
 
-          asset_name: ${{ env.LINUX_PACKAGE_NAME }}
+      - name: Upload Debian package
+        id: upload-release-asset-install-package-rpm
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_RPM_NAME }}
+          asset_name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
           asset_content_type: application/octet-stream
 
   notify-slack:
@@ -388,7 +410,7 @@ jobs:
         with:
           status: ${{ job.status }}
           text: |
-            Workflow ${{ github.workflow }} in repository ${{ github.repository }} has completed. 
+            Workflow ${{ github.workflow }} in repository ${{ github.repository }} has completed.
             Check the release package at https://github.com/${{ github.repository }}/releases/tag/${{ github.ref }}
           fields: repo,message,commit,author,eventName,ref,workflow,job,took
         env:
