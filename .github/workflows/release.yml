@@ -86,7 +86,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -188,7 +187,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -310,7 +308,6 @@ jobs:
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
