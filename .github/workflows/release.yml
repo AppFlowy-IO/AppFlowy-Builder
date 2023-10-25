@@ -346,7 +346,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-linux-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.create-release.outputs.version }}
+          cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-linux-x86_64 appflowy
 
       - name: Archive Asset
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
