@@ -134,6 +134,11 @@ jobs:
         working-directory: frontend/appflowy_flutter
         shell: bash
 
+      - uses: actions/upload-artifact@v2
+        with:
+          name: appflowy-artifact
+          path: .
+
   build-for-windows:
     strategy:
       fail-fast: false
@@ -151,6 +156,11 @@ jobs:
       WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
 
     steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: appflowy-artifact
+
       - name: Build Windows app
         working-directory: frontend
         run: |
@@ -194,6 +204,10 @@ jobs:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
       MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
     steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: appflowy-artifact
       - name: Build AppFlowy
         working-directory: frontend
         run: |
@@ -258,6 +272,11 @@ jobs:
       LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.rpm
       LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-2.x86_64.rpm
     steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: appflowy-artifact
+
       - name: Install gcc-aarch64-linux-gnu
         if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
         working-directory: frontend
