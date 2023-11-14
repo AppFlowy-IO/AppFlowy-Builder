@@ -58,12 +58,11 @@ jobs:
       fail-fast: false
       matrix:
 #        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
       WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.create-release.outputs.version }}\windows
-      WINDOWS_ZIP_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64.zip
       WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
 
     steps:
@@ -114,12 +113,6 @@ jobs:
           flutter config --enable-windows-desktop
           cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-windows-x86 appflowy
 
-      - name: Archive Asset
-        uses: vimtor/action-zip@v1
-        with:
-          files: ${{ env.WINDOWS_APP_RELEASE_PATH }}\
-          dest: ${{ env.WINDOWS_APP_RELEASE_PATH }}\${{ env.WINDOWS_ZIP_NAME }}
-
       - name: Copy installer config & icon file
         working-directory: frontend
         run: |
@@ -129,17 +122,6 @@ jobs:
         working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
         run: |
           iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.create-release.outputs.version }}
-
-      - name: Upload Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.WINDOWS_APP_RELEASE_PATH }}\${{ env.WINDOWS_ZIP_NAME }}
-          asset_name: ${{ env.WINDOWS_ZIP_NAME }}
-          asset_content_type: application/octet-stream
 
       - name: Upload Installer Asset
         id: upload-installer-asset
@@ -160,12 +142,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/macos/Release
-      MACOS_X86_ZIP_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64.zip
       MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
     steps:
       - name: Checkout source code
@@ -242,20 +223,6 @@ jobs:
         run: |
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
-      - name: Archive Asset
-        working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
-        run: zip --symlinks -qr ${{ env.MACOS_X86_ZIP_NAME }} AppFlowy.app
-
-      - name: Upload Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_ZIP_NAME }}
-          asset_name: ${{ env.MACOS_X86_ZIP_NAME }}
-          asset_content_type: application/octet-stream
-
       - name: Upload DMG Asset
         uses: actions/upload-release-asset@v1
         env:
@@ -274,7 +241,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE_PRODUCTION]
+        environment: [SUPABASE]
         job:
           - {
             arch: x86_64,
@@ -284,7 +251,6 @@ jobs:
           }
     env:
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release
-      LINUX_ZIP_NAME: ${{ matrix.environment }}-AppFlowy-x86_64.tar.gz
       LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.deb
       LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.rpm
       LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.create-release.outputs.version }}-2.x86_64.rpm
@@ -348,10 +314,6 @@ jobs:
           flutter config --enable-linux-desktop
           cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-linux-x86_64 appflowy
 
-      - name: Archive Asset
-        working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
-
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
@@ -365,17 +327,6 @@ jobs:
           echo '------------'
           cp -r ${{ env.LINUX_PACKAGE_TMP_RPM_NAME }} ${{ env.LINUX_PACKAGE_RPM_NAME }}
           ls -a
-
-      - name: Upload Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_ZIP_NAME }}
-          asset_name: ${{ env.LINUX_ZIP_NAME }}
-          asset_content_type: application/octet-stream
 
       - name: Upload Debian package
         id: upload-release-asset-install-package-deb
