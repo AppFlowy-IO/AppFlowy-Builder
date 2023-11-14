@@ -107,6 +107,7 @@ jobs:
         run: |
           touch ${{ env.RELEASE_NOTES_PATH }}
           cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
+        shell: bash
 
       - name: Create release
         id: create_release
@@ -121,9 +122,16 @@ jobs:
       - name: Generate Env file
         run: |
           touch .env
-          echo CLOUD_TYPE=1 >> .env
+          echo CLOUD_TYPE=${{ secrets.CLOUD_TYPE }} .env
+          ${{ if eq(matrix.environment, 'SUPABASE') }}
           echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
           echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
+          ${{ endif }}
+          ${{ if eq(matrix.environment, 'APPFLOWY_CLOUD') }}
+          echo APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }} >> .env
+          echo APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }} >> .env
+          echo APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }} >> .env
+          ${{ endif }}
         working-directory: frontend/appflowy_flutter
 
   build-for-windows:
