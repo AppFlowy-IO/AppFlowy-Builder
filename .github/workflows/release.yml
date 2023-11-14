@@ -52,6 +52,7 @@ jobs:
           echo $BRANCH_NAME
           echo "::set-output name=version::$VERSION"
           echo "::set-output name=branch_name::$BRANCH_NAME"
+        shell: bash
 
       - name: Checkout source code
         uses: actions/checkout@v3
