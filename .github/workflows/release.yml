@@ -6,20 +6,104 @@ on:
       - "*"
 
 env:
-  FLUTTER_VERSION: "3.10.4"
   RUST_TOOLCHAIN: "1.70"
+  CARGO_MAKE_VERSION: "0.36.6"
+  FLUTTER_VERSION: "3.10.4"
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    #https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
+  prepare:
     env:
       RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
       version: ${{ steps.parse_tag.outputs.version }}
       branch_name: ${{ steps.parse_tag.outputs.branch_name }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
+        environment: [SUPABASE]
+        include:
+          - os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64,
+            flutter_profile: production-linux-x86_64,
+          - os: macos-11
+            target: x86_64-apple-darwin
+          - os: windows-2019
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+
     steps:
+      - name: Maximize build space
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      - name: Checkout source code
+        uses: actions/checkout@v2
+
+      - name: Install Rust toolchain
+        id: rust_toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.target }}
+          override: true
+          profile: minimal
+
+      - name: Install flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.os }}
+          workspaces: |
+            frontend/rust-lib
+          cache-all-crates: true
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make@${{ env.CARGO_MAKE_VERSION }}, duckscript_cli
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
+            sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
+            sudo apt-get update
+            sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev keybinder-3.0 libnotify-dev
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            vcpkg integrate install
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            echo 'do nothing'
+          fi
+          cargo make appflowy-flutter-deps-tools
+        shell: bash
+        
+      - name: Build release notes
+        run: |
+          touch ${{ env.RELEASE_NOTES_PATH }}
+          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
+
+      - name: Create release
+        id: create_release
+        uses: actions/prepare@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ steps.parse_tag.outputs.version }}
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
+
       - name: Parse Tag
         id: parse_tag
         run: |
@@ -31,48 +115,7 @@ jobs:
           echo "::set-output name=version::$VERSION"
           echo "::set-output name=branch_name::$BRANCH_NAME"
 
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Build release notes
-        run: |
-          touch ${{ env.RELEASE_NOTES_PATH }}
-          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
-
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ steps.parse_tag.outputs.version }}
-          body_path: ${{ env.RELEASE_NOTES_PATH }}
-
-  build-for-windows:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
-    needs: create-release
-    runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.environment }}
-    strategy:
-      fail-fast: false
-      matrix:
-#        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE]
-        job:
-          - { target: x86_64-pc-windows-msvc, os: windows-2019 }
-    env:
-      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.create-release.outputs.version }}\windows
-      WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
-
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-        with:
-          repository: AppFlowy-IO/AppFlowy
-          ref: ${{ needs.create-release.outputs.branch_name }}
-
-      - name: Create Env file
+      - name: Generate Env file
         run: |
           touch .env
           echo CLOUD_TYPE=1 >> .env
@@ -80,38 +123,21 @@ jobs:
           echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
         working-directory: frontend/appflowy_flutter
 
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
+  build-for-windows:
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
+    needs: [prepare] 
+    runs-on: ${{ matrix.job.os }}
+    environment: ${{ matrix.environment }}
+    env:
+      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.prepare.outputs.version }}\windows
+      WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
 
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.job.target }}
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: appflowy-lib-cache
-          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          vcpkg integrate install
-          cargo install --force cargo-make
-          cargo install --force duckscript_cli
-
+    steps:
       - name: Build Windows app
         working-directory: frontend
         run: |
           flutter config --enable-windows-desktop
-          cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-windows-x86 appflowy
+          cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-windows-x86 appflowy
 
       - name: Copy installer config & icon file
         working-directory: frontend
@@ -121,7 +147,7 @@ jobs:
       - name: Build installer executable
         working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
         run: |
-          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.create-release.outputs.version }}
+          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload Installer Asset
         id: upload-installer-asset
@@ -129,7 +155,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.WINDOWS_APP_RELEASE_PATH }}\Output\${{ env.WINDOWS_INSTALLER_NAME }}.exe
           asset_name: ${{ env.WINDOWS_INSTALLER_NAME }}.exe
           asset_content_type: application/octet-stream
@@ -138,62 +164,16 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
     environment: ${{ matrix.environment }}
-    needs: create-release
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: [SUPABASE]
-        job:
-          - { target: x86_64-apple-darwin, os: macos-11 }
+    needs: [prepare]
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/macos/Release
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
       MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-        with:
-          repository: AppFlowy-IO/AppFlowy
-          ref: ${{ needs.create-release.outputs.branch_name }}
-
-      - name: Create Env file
-        run: |
-          touch .env
-          echo CLOUD_TYPE=1 >> .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
-        working-directory: frontend/appflowy_flutter
-
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.job.target }}
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: appflowy-lib-cache
-          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          cargo install --force cargo-make
-          cargo install --force duckscript_cli
-
       - name: Build AppFlowy
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.create-release.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.prepare.outputs.version }}
 
       - name: Codesign AppFlowy
         run: |
@@ -228,7 +208,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
           asset_name: ${{ env.MACOS_DMG_NAME }}.dmg
           asset_content_type: application/octet-stream
@@ -237,71 +217,13 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
     environment: ${{ matrix.environment }}
-    needs: create-release
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: [SUPABASE]
-        job:
-          - {
-            arch: x86_64,
-            target: x86_64-unknown-linux-gnu,
-            os: ubuntu-20.04,
-            flutter_profile: production-linux-x86_64,
-          }
+    needs: [prepare]
     env:
-      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release
-      LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.deb
-      LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.rpm
-      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.create-release.outputs.version }}-2.x86_64.rpm
+      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release
+      LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.deb
+      LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.rpm
+      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-2.x86_64.rpm
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-        with:
-          repository: AppFlowy-IO/AppFlowy
-          ref: ${{ needs.create-release.outputs.branch_name }}
-
-      - name: Create Env file
-        run: |
-          touch .env
-          echo CLOUD_TYPE=1 >> .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
-        working-directory: frontend/appflowy_flutter
-
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.job.target }}
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: appflowy-lib-cache
-          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
-          sudo apt-get update
-          sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
-          sudo apt-get install keybinder-3.0 libnotify-dev
-          sudo apt-get -y install alien
-          source $HOME/.cargo/env
-          cargo install --force cargo-make
-          cargo install --force duckscript_cli
-          rustup target add ${{ matrix.job.target }}
-
       - name: Install gcc-aarch64-linux-gnu
         if: ${{ matrix.job.target == 'aarch64-unknown-linux-gnu' }}
         working-directory: frontend
@@ -312,12 +234,12 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-linux-desktop
-          cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-linux-x86_64 appflowy
+          cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-linux-x86_64 appflowy
 
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release ${{ needs.create-release.outputs.version }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
+          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release ${{ needs.prepare.outputs.version }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
 
       - name: Build Linux package (.rpm)
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
@@ -334,7 +256,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_DEB_NAME }}
           asset_name: ${{ env.LINUX_PACKAGE_DEB_NAME }}
           asset_content_type: application/octet-stream
@@ -345,7 +267,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_RPM_NAME }}
           asset_name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
           asset_content_type: application/octet-stream
