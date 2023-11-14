@@ -43,8 +43,22 @@ jobs:
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
+      - name: Parse Tag
+        id: parse_tag
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
+          BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
+          echo $VERSION
+          echo $BRANCH_NAME
+          echo "::set-output name=version::$VERSION"
+          echo "::set-output name=branch_name::$BRANCH_NAME"
+
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+        with:
+          repository: AppFlowy-IO/AppFlowy
+          ref: ${{ needs.create-release.outputs.branch_name }}
 
       - name: Install Rust toolchain
         id: rust_toolchain
@@ -103,17 +117,6 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ steps.parse_tag.outputs.version }}
           body_path: ${{ env.RELEASE_NOTES_PATH }}
-
-      - name: Parse Tag
-        id: parse_tag
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
-          BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
-          echo $VERSION
-          echo $BRANCH_NAME
-          echo "::set-output name=version::$VERSION"
-          echo "::set-output name=branch_name::$BRANCH_NAME"
 
       - name: Generate Env file
         run: |
