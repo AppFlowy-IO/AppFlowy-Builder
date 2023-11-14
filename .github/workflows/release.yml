@@ -12,8 +12,6 @@ env:
 
 jobs:
   prepare:
-    env:
-      RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
       version: ${{ steps.parse_tag.outputs.version }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -137,9 +135,9 @@ jobs:
         shell: bash
 
   build-for-windows:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
+    name: ${{ matrix.target }} (${{ matrix.os }}) ${{ matrix.environment }}
     needs: [prepare] 
-    runs-on: ${{ matrix.job.os }}
+    runs-on: ${{ matrix.os }}
     environment: ${{ matrix.environment }}
     env:
       WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.prepare.outputs.version }}\windows
@@ -174,8 +172,8 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-for-macOS:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
-    runs-on: ${{ matrix.job.os }}
+    name: ${{ matrix.target }} (${{ matrix.os }}) ${{ matrix.environment }}
+    runs-on: ${{ matrix.os }}
     environment: ${{ matrix.environment }}
     needs: [prepare]
     env:
@@ -227,8 +225,8 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-for-linux:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
-    runs-on: ${{ matrix.job.os }}
+    name: ${{ matrix.target }} (${{ matrix.os }}) ${{ matrix.environment }}
+    runs-on: ${{ matrix.os }}
     environment: ${{ matrix.environment }}
     needs: [prepare]
     env:
@@ -238,7 +236,7 @@ jobs:
       LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-2.x86_64.rpm
     steps:
       - name: Install gcc-aarch64-linux-gnu
-        if: ${{ matrix.job.target == 'aarch64-unknown-linux-gnu' }}
+        if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
         working-directory: frontend
         run: |
           sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libgtk-3-0
