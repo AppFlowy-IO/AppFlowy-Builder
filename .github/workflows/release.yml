@@ -122,17 +122,19 @@ jobs:
       - name: Generate Env file
         run: |
           touch .env
-          echo CLOUD_TYPE=${{ secrets.CLOUD_TYPE }} .env
-          ${{ if eq(matrix.environment, 'SUPABASE') }}
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
-          ${{ endif }}
-          ${{ if eq(matrix.environment, 'APPFLOWY_CLOUD') }}
-          echo APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }} >> .env
-          echo APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }} >> .env
-          echo APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }} >> .env
-          ${{ endif }}
+          echo "CLOUD_TYPE=${{ secrets.CLOUD_TYPE }}" >> .env
+          if [ "${{ matrix.environment }}" = "SUPABASE" ]; then
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+            echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+          fi
+          if [ "${{ matrix.environment }}" = "APPFLOWY_CLOUD" ]; then
+            echo "APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }}" >> .env
+            echo "APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}" >> .env
+            echo "APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}" >> .env
+          fi
         working-directory: frontend/appflowy_flutter
+        shell: bash
+
 
   build-for-windows:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
