@@ -32,14 +32,6 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Maximize build space
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
       - name: Parse Tag
         id: parse_tag
         run: |
@@ -58,49 +50,6 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ steps.parse_tag.outputs.branch_name }}
 
-      - name: Install Rust toolchain
-        id: rust_toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.target }}
-          override: true
-          profile: minimal
-
-      - name: Install flutter
-        id: flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ matrix.os }}
-          workspaces: |
-            frontend/rust-lib
-          cache-all-crates: true
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-make@${{ env.CARGO_MAKE_VERSION }}, duckscript_cli
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
-            sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
-            sudo apt-get update
-            sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev keybinder-3.0 libnotify-dev
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            vcpkg integrate install
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo 'do nothing'
-          fi
-          cargo make appflowy-flutter-deps-tools
-        shell: bash
-        
       - name: Create release notes
         id: create_release_notes
         run: |
@@ -161,6 +110,36 @@ jobs:
         with:
           name: appflowy-artifact
 
+      - name: Install flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Rust toolchain
+        id: rust_toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.target }}
+          override: true
+          profile: minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.os }}
+          workspaces: |
+            frontend/rust-lib
+          cache-all-crates: true
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          vcpkg integrate install
+          cargo install --force cargo-make
+          cargo install --force duckscript_cli
+
       - name: Build Windows app
         working-directory: frontend
         run: |
@@ -208,6 +187,37 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: appflowy-artifact
+
+      - name: Install flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Rust toolchain
+        id: rust_toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.target }}
+          override: true
+          profile: minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.os }}
+          workspaces: |
+            frontend/rust-lib
+          cache-all-crates: true
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          cargo install --force cargo-make
+          cargo install --force duckscript_cli
+
+
       - name: Build AppFlowy
         working-directory: frontend
         run: |
@@ -276,6 +286,41 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: appflowy-artifact
+
+      - name: Install flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Rust toolchain
+        id: rust_toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.target }}
+          override: true
+          profile: minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.os }}
+          workspaces: |
+            frontend/rust-lib
+          cache-all-crates: true
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install keybinder-3.0
+          source $HOME/.cargo/env
+          cargo install --force cargo-make
+          cargo install --force duckscript_cli
+          rustup target add ${{ matrix.job.target }}
 
       - name: Install gcc-aarch64-linux-gnu
         if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
