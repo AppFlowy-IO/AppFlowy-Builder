@@ -177,7 +177,6 @@ jobs:
           sed -i '' 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
           sed -i '' 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
           fi
-  
           cat .env
         working-directory: frontend/appflowy_flutter
         shell: bash
@@ -288,6 +287,7 @@ jobs:
             sed -i 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
             sed -i 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
           fi
+          cat .env
         working-directory: frontend/appflowy_flutter
         shell: bash
 
