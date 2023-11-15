@@ -117,11 +117,6 @@ jobs:
           components: rustfmt
           profile: minimal
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: appflowy-lib-cache
-          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
-
       - name: Install prerequisites
         working-directory: frontend
         run: |
@@ -197,11 +192,6 @@ jobs:
           override: true
           components: rustfmt
           profile: minimal
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: appflowy-lib-cache
-          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
 
       - name: Install prerequisites
         working-directory: frontend
@@ -301,11 +291,6 @@ jobs:
           override: true
           components: rustfmt
           profile: minimal
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: appflowy-lib-cache
-          key: ${{ matrix.job.os }}-${{ matrix.job.target }}
 
       - name: Install prerequisites
         working-directory: frontend
