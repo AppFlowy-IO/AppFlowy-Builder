@@ -54,7 +54,7 @@ jobs:
             sed -i 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
           fi
           cat .env
-        working-directory: AppFlowy/frontend/appflowy_flutter
+        working-directory: frontend/appflowy_flutter
 
       - name: Create release notes
         id: create_release_notes
@@ -63,7 +63,6 @@ jobs:
           RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;')
           echo "::set-output name=release_notes::$RELEASE_NOTES"
         shell: bash
-        working-directory: AppFlowy
 
       - name: Create release
         id: create_release
