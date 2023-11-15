@@ -10,7 +10,7 @@ env:
   RUST_TOOLCHAIN: "1.70"
 
 jobs:
-  create-release:
+  prepare:
     runs-on: ubuntu-latest
     #https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
     env:
@@ -34,10 +34,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Build release notes
+      - name: Create release notes
+        id: create_release_notes
         run: |
-          touch ${{ env.RELEASE_NOTES_PATH }}
-          cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;' >> ${{ env.RELEASE_NOTES_PATH }}
+          RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;')
+          echo "::set-output name=release_notes::$RELEASE_NOTES"
+        shell: bash
 
       - name: Create release
         id: create_release
@@ -47,11 +49,25 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: ${{ steps.parse_tag.outputs.version }}
-          body_path: ${{ env.RELEASE_NOTES_PATH }}
+          body: ${{ steps.create_release_notes.outputs.release_notes }}
+
+      - name: Create Env file
+        run: |
+          touch .env
+          echo CLOUD_TYPE=1 >> .env
+          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
+          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
+        working-directory: frontend/appflowy_flutter
+
+      - name: Upload .env file
+        uses: actions/upload-artifact@v2
+        with:
+          name: env-file
+          path: frontend/appflowy_flutter/.env
 
   build-for-windows:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
-    needs: create-release
+    needs: prepare
     runs-on: ${{ matrix.job.os }}
     environment: ${{ matrix.environment }}
     strategy:
@@ -62,7 +78,7 @@ jobs:
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
-      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.create-release.outputs.version }}\windows
+      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.prepare.outputs.version }}\windows
       WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
 
     steps:
@@ -70,15 +86,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: AppFlowy-IO/AppFlowy
-          ref: ${{ needs.create-release.outputs.branch_name }}
+          ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          touch .env
-          echo CLOUD_TYPE=1 >> .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
-        working-directory: frontend/appflowy_flutter
+      - name: Download .env file
+        uses: actions/download-artifact@v2
+        with:
+          name: env-file
+          path: frontend/appflowy_flutter
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -111,7 +125,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-windows-desktop
-          cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-windows-x86 appflowy
+          cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-windows-x86 appflowy
 
       - name: Copy installer config & icon file
         working-directory: frontend
@@ -121,7 +135,7 @@ jobs:
       - name: Build installer executable
         working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
         run: |
-          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.create-release.outputs.version }}
+          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload Installer Asset
         id: upload-installer-asset
@@ -129,7 +143,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.WINDOWS_APP_RELEASE_PATH }}\Output\${{ env.WINDOWS_INSTALLER_NAME }}.exe
           asset_name: ${{ env.WINDOWS_INSTALLER_NAME }}.exe
           asset_content_type: application/octet-stream
@@ -138,7 +152,7 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
     environment: ${{ matrix.environment }}
-    needs: create-release
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -146,22 +160,20 @@ jobs:
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/macos/Release
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
       MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
         with:
           repository: AppFlowy-IO/AppFlowy
-          ref: ${{ needs.create-release.outputs.branch_name }}
+          ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          touch .env
-          echo CLOUD_TYPE=1 >> .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
-        working-directory: frontend/appflowy_flutter
+      - name: Download .env file
+        uses: actions/download-artifact@v2
+        with:
+          name: env-file
+          path: frontend/appflowy_flutter
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -193,7 +205,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.create-release.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.prepare.outputs.version }}
 
       - name: Codesign AppFlowy
         run: |
@@ -228,7 +240,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
           asset_name: ${{ env.MACOS_DMG_NAME }}.dmg
           asset_content_type: application/octet-stream
@@ -237,7 +249,7 @@ jobs:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
     runs-on: ${{ matrix.job.os }}
     environment: ${{ matrix.environment }}
-    needs: create-release
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -250,24 +262,22 @@ jobs:
             flutter_profile: production-linux-x86_64,
           }
     env:
-      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release
-      LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.deb
-      LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.create-release.outputs.version }}-linux-x86_64.rpm
-      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.create-release.outputs.version }}-2.x86_64.rpm
+      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release
+      LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.deb
+      LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.rpm
+      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-2.x86_64.rpm
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
         with:
           repository: AppFlowy-IO/AppFlowy
-          ref: ${{ needs.create-release.outputs.branch_name }}
+          ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          touch .env
-          echo CLOUD_TYPE=1 >> .env
-          echo SUPABASE_URL=${{ secrets.SUPABASE_URL }} >> .env
-          echo SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} >> .env
-        working-directory: frontend/appflowy_flutter
+      - name: Download .env file
+        uses: actions/download-artifact@v2
+        with:
+          name: env-file
+          path: frontend/appflowy_flutter
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -312,12 +322,12 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-linux-desktop
-          cargo make --env APP_VERSION=${{ needs.create-release.outputs.version }} --profile production-linux-x86_64 appflowy
+          cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-linux-x86_64 appflowy
 
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.create-release.outputs.version }}/linux/Release ${{ needs.create-release.outputs.version }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
+          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release ${{ needs.prepare.outputs.version }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
 
       - name: Build Linux package (.rpm)
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
@@ -334,7 +344,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_DEB_NAME }}
           asset_name: ${{ env.LINUX_PACKAGE_DEB_NAME }}
           asset_content_type: application/octet-stream
@@ -345,7 +355,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ needs.prepare.outputs.upload_url }}
           asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_RPM_NAME }}
           asset_name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
           asset_content_type: application/octet-stream
