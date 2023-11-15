@@ -37,24 +37,6 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ steps.parse_tag.outputs.branch_name }}
 
-      - name: Create release notes
-        id: create_release_notes
-        run: |
-          RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;')
-          echo "::set-output name=release_notes::$RELEASE_NOTES"
-        shell: bash
-        working-directory: AppFlowy
-
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ steps.parse_tag.outputs.version }}
-          body: ${{ steps.create_release_notes.outputs.release_notes }}
-
       - name: Create Env file
         run: |
           cp dev.env .env
@@ -70,6 +52,25 @@ jobs:
           fi
           cat .env
         working-directory: AppFlowy/frontend/appflowy_flutter
+
+      - name: Create release notes
+        id: create_release_notes
+        run: |
+          ls -al
+          RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;')
+          echo "::set-output name=release_notes::$RELEASE_NOTES"
+        shell: bash
+        working-directory: AppFlowy
+
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ steps.parse_tag.outputs.version }}
+          body: ${{ steps.create_release_notes.outputs.release_notes }}
 
       - uses: actions/upload-artifact@v3
         with:
