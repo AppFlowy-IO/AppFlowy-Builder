@@ -37,21 +37,6 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ steps.parse_tag.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          cp dev.env .env
-          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=${{ secrets.CLOUD_TYPE }}|' .env
-          
-          if [ "${{ secrets.CLOUD_TYPE }}" = "1" ]; then
-            sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
-            sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
-          elif [ "${{ secrets.CLOUD_TYPE }}" = "2" ]; then
-            sed -i 's|APPFLOWY_CLOUD_BASE_URL=.*|APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }}|' .env
-            sed -i 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
-            sed -i 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
-          fi
-        working-directory: frontend/appflowy_flutter
-
       - name: Create release notes
         id: create_release_notes
         run: |
@@ -68,11 +53,6 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ steps.parse_tag.outputs.version }}
           body: ${{ steps.create_release_notes.outputs.release_notes }}
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: appflowy-env-file
-          path: frontend/appflowy_flutter/.env
 
   build-for-windows:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
@@ -97,11 +77,20 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Download .env file
-        uses: actions/download-artifact@v3
-        with:
-          name: appflowy-env-file
-          path: frontend/appflowy_flutter
+      - name: Create Env file
+        run: |
+          cp dev.env .env
+          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=${{ secrets.CLOUD_TYPE }}|' .env
+
+          if [ "${{ secrets.CLOUD_TYPE }}" = "1" ]; then
+            sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+            sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
+          elif [ "${{ secrets.CLOUD_TYPE }}" = "2" ]; then
+            sed -i 's|APPFLOWY_CLOUD_BASE_URL=.*|APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }}|' .env
+            sed -i 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
+            sed -i 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
+          fi
+        working-directory: frontend/appflowy_flutter
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -173,15 +162,21 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Download .env file
-        uses: actions/download-artifact@v3
-        with:
-          name: appflowy-env-file
-          path: frontend/appflowy_flutter
+      - name: Create Env file
+        run: |
+          cp dev.env .env
+          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=${{ secrets.CLOUD_TYPE }}|' .env
 
-      - name: Check .env file
+          if [ "${{ secrets.CLOUD_TYPE }}" = "1" ]; then
+            sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+            sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
+          elif [ "${{ secrets.CLOUD_TYPE }}" = "2" ]; then
+            sed -i 's|APPFLOWY_CLOUD_BASE_URL=.*|APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }}|' .env
+            sed -i 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
+            sed -i 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
+          fi
+          cat .env
         working-directory: frontend/appflowy_flutter
-        run: cat .env
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -276,11 +271,21 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Download .env file
-        uses: actions/download-artifact@v3
-        with:
-          name: appflowy-env-file
-          path: frontend/appflowy_flutter
+      - name: Create Env file
+        run: |
+          cp dev.env .env
+          sed -i 's|CLOUD_TYPE=.*|CLOUD_TYPE=${{ secrets.CLOUD_TYPE }}|' .env
+
+          if [ "${{ secrets.CLOUD_TYPE }}" = "1" ]; then
+            sed -i 's|SUPABASE_URL=.*|SUPABASE_URL=${{ secrets.SUPABASE_URL }}|' .env
+            sed -i 's|SUPABASE_ANON_KEY=.*|SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}|' .env
+          elif [ "${{ secrets.CLOUD_TYPE }}" = "2" ]; then
+            sed -i 's|APPFLOWY_CLOUD_BASE_URL=.*|APPFLOWY_CLOUD_BASE_URL=${{ secrets.APPFLOWY_CLOUD_BASE_URL }}|' .env
+            sed -i 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
+            sed -i 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
+          fi
+        working-directory: frontend/appflowy_flutter
+
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
