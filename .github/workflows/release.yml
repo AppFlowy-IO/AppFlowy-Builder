@@ -12,9 +12,6 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    #https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-    env:
-      RELEASE_NOTES_PATH: /tmp/release_notes
     outputs:
       version: ${{ steps.parse_tag.outputs.version }}
       branch_name: ${{ steps.parse_tag.outputs.branch_name }}
@@ -90,7 +87,6 @@ jobs:
             (Get-Content .env) -replace 'APPFLOWY_CLOUD_WS_BASE_URL=.*', "APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}" | Set-Content .env
             (Get-Content .env) -replace 'APPFLOWY_CLOUD_GOTRUE_URL=.*', "APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}" | Set-Content .env
           }
-          Get-Content .env
         working-directory: frontend/appflowy_flutter
         shell: pwsh
 
@@ -177,8 +173,6 @@ jobs:
           sed -i '' 's|APPFLOWY_CLOUD_WS_BASE_URL=.*|APPFLOWY_CLOUD_WS_BASE_URL=${{ secrets.APPFLOWY_CLOUD_WS_BASE_URL }}|' .env
           sed -i '' 's|APPFLOWY_CLOUD_GOTRUE_URL=.*|APPFLOWY_CLOUD_GOTRUE_URL=${{ secrets.APPFLOWY_CLOUD_GOTRUE_URL }}|' .env
           fi
-  
-          cat .env
         working-directory: frontend/appflowy_flutter
         shell: bash
 
@@ -290,7 +284,6 @@ jobs:
           fi
         working-directory: frontend/appflowy_flutter
         shell: bash
-
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
