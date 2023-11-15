@@ -32,10 +32,13 @@ jobs:
           echo "::set-output name=branch_name::$BRANCH_NAME"
 
       - name: Checkout source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v2
         with:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ steps.parse_tag.outputs.branch_name }}
+
+      - name: Checkout source code
+        run: ls -al
 
       - name: Create Env file
         run: |
