@@ -23,6 +23,10 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
           BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
+          if [ -z "$BRANCH_NAME" ]; then
+            echo "Error: BRANCH_NAME is empty. The tag name should be in the format of <version>_<branch_name>"
+            exit 1
+          fi
           echo $VERSION
           echo $BRANCH_NAME
           echo "::set-output name=version::$VERSION"
