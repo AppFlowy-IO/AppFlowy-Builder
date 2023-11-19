@@ -212,7 +212,7 @@ jobs:
           fi
 
       - name: Codesign AppFlowy
-        if: secrets.MACOS_CODESIGN_ID != ''
+        if: ${{ secrets.MACOS_CODESIGN_ID }} != ''
         run: |
           echo ${{ secrets.MACOS_CERTIFICATE }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
