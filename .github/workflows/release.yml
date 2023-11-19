@@ -153,6 +153,7 @@ jobs:
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
       MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
+      MACOS_CODESIGN_ID: ${{ secrets.MACOS_CODESIGN_ID }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v3
@@ -205,14 +206,14 @@ jobs:
 
       - name: Check for Code signing ID
         run: |
-          if [ -z "${{ secrets.MACOS_CODESIGN_ID }}" ]; then
+          if [ -z "${{ env.MACOS_CODESIGN_ID }}" ]; then
             echo "MACOS_CODESIGN_ID is not set. Skipping code signing step."
           else
             echo "MACOS_CODESIGN_ID is set. Proceeding with code signing."
           fi
 
       - name: Codesign AppFlowy
-        if: ${{ secrets.MACOS_CODESIGN_ID }} != ''
+        if: env.MACOS_CODESIGN_ID != ''
         run: |
           echo ${{ secrets.MACOS_CERTIFICATE }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
@@ -220,7 +221,7 @@ jobs:
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.MACOS_CERTIFICATE_PWD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
-          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+          /usr/bin/codesign --force --options runtime --deep --sign "${{ env.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
 
       - name: Create macOS dmg
         run: |
