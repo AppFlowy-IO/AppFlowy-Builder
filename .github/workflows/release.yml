@@ -203,7 +203,16 @@ jobs:
           flutter config --enable-macos-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.prepare.outputs.version }}
 
+      - name: Check for Code signing ID
+        run: |
+          if [ -z "${{ secrets.MACOS_CODESIGN_ID }}" ]; then
+            echo "MACOS_CODESIGN_ID is not set. Skipping code signing step."
+          else
+            echo "MACOS_CODESIGN_ID is set. Proceeding with code signing."
+          fi
+
       - name: Codesign AppFlowy
+        if: secrets.MACOS_CODESIGN_ID != ''
         run: |
           echo ${{ secrets.MACOS_CERTIFICATE }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
