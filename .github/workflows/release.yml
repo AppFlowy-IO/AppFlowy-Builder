@@ -80,6 +80,7 @@ jobs:
 
       - name: Create Env file
         run: |
+          cp dev.env .env
           (Get-Content .env) -replace 'APPFLOWY_CLOUD_URL=.*', "APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}" | Set-Content .env
         working-directory: frontend/appflowy_flutter
         shell: pwsh
@@ -157,7 +158,7 @@ jobs:
 
       - name: Create Env file
         run: |
-          cp .env.dev .env
+          cp dev.env .env
           sed -i '' 's|APPFLOWY_CLOUD_URL=.*|APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}|' .env
         working-directory: frontend/appflowy_flutter
         shell: bash
