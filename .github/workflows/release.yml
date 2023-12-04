@@ -56,20 +56,17 @@ jobs:
           body: ${{ steps.create_release_notes.outputs.release_notes }}
 
   build-for-windows:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     needs: prepare
     runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.environment }}
     strategy:
       fail-fast: false
       matrix:
-#        https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment
-        environment: [SUPABASE]
         job:
           - { target: x86_64-pc-windows-msvc, os: windows-2019 }
     env:
       WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.prepare.outputs.version }}\windows
-      WINDOWS_INSTALLER_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_windows-x86_64
+      WINDOWS_INSTALLER_NAME: AppFlowy_${{ github.ref_name }}_windows-x86_64
 
     steps:
       - name: Checkout source code
@@ -78,12 +75,12 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          cp dev.env .env
-          (Get-Content .env) -replace 'APPFLOWY_CLOUD_URL=.*', "APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}" | Set-Content .env
-        working-directory: frontend/appflowy_flutter
-        shell: pwsh
+#      - name: Create Env file
+#        run: |
+#          cp dev.env .env
+#          (Get-Content .env) -replace 'APPFLOWY_CLOUD_URL=.*', "APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}" | Set-Content .env
+#        working-directory: frontend/appflowy_flutter
+#        shell: pwsh
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -135,19 +132,17 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-for-macOS:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.environment }}
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE]
         job:
           - { target: x86_64-apple-darwin, os: macos-11 }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
-      MACOS_DMG_NAME: ${{ matrix.environment }}_AppFlowy_${{ github.ref_name }}_macos-x86_64
+      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64
       MACOS_CODESIGN_ID: ${{ secrets.MACOS_CODESIGN_ID }}
     steps:
       - name: Checkout source code
@@ -156,12 +151,12 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          cp dev.env .env
-          sed -i '' 's|APPFLOWY_CLOUD_URL=.*|APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}|' .env
-        working-directory: frontend/appflowy_flutter
-        shell: bash
+#      - name: Create Env file
+#        run: |
+#          cp dev.env .env
+#          sed -i '' 's|APPFLOWY_CLOUD_URL=.*|APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}|' .env
+#        working-directory: frontend/appflowy_flutter
+#        shell: bash
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -238,14 +233,12 @@ jobs:
           asset_content_type: application/octet-stream
 
   build-for-linux:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }}) ${{ matrix.environment }}
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     runs-on: ${{ matrix.job.os }}
-    environment: ${{ matrix.environment }}
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        environment: [SUPABASE]
         job:
           - {
             arch: x86_64,
@@ -255,8 +248,8 @@ jobs:
           }
     env:
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release
-      LINUX_PACKAGE_DEB_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.deb
-      LINUX_PACKAGE_RPM_NAME: ${{ matrix.environment }}-AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.rpm
+      LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.deb
+      LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.rpm
       LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-2.x86_64.rpm
     steps:
       - name: Checkout source code
@@ -265,12 +258,12 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Create Env file
-        run: |
-          cp dev.env .env
-          sed -i 's|APPFLOWY_CLOUD_URL=.*|APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}|' .env
-        working-directory: frontend/appflowy_flutter
-        shell: bash
+#      - name: Create Env file
+#        run: |
+#          cp dev.env .env
+#          sed -i 's|APPFLOWY_CLOUD_URL=.*|APPFLOWY_CLOUD_URL=${{ secrets.APPFLOWY_CLOUD_URL }}|' .env
+#        working-directory: frontend/appflowy_flutter
+#        shell: bash
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
