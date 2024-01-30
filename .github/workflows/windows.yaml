@@ -1,0 +1,119 @@
+name: Build AppFlowy Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Repo"
+        required: true
+        default: "AppFlowy-IO/AppFlowy"
+      branch:
+        description: "Branch"
+        required: true
+        default: "main"
+      build_name:
+        description: "Build Version (it should match the version in pubspec.yaml)"
+        required: true
+        default: "0.4.3"
+      server_type:
+        type: choice
+        description: 'Server Type (1 for local, 2 for cloud)'
+        required: true
+        default: '2'
+        options:
+            - 1
+            - 2
+      server_url:
+        description: 'Server URL'
+        required: true
+        default: 'https://beta.appflowy.cloud'
+
+env:
+  FLUTTER_VERSION: "3.18.0-0.2.pre"
+  RUST_TOOLCHAIN: "1.75"
+
+jobs:
+  build:
+    env:
+      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ github.event.inputs.build_name }}\windows
+      WINDOWS_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-windows-x86_64.zip
+      WINDOWS_INSTALLER_NAME: AppFlowy-${{ github.event.inputs.build_name }}-windows-x86_64
+
+    runs-on: windows-2019
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.event.inputs.repo }}
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          cache: true
+          channel: "beta"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: x86_64-pc-windows-msvc
+          override: true
+          components: rustfmt
+          profile: minimal
+
+      - uses: davidB/rust-cargo-make@v1
+        with:
+          version: '0.37.5'
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          vcpkg integrate install
+          cargo install --force duckscript_cli
+
+      - name: Generate env file
+        working-directory: frontend/appflowy_flutter
+        run: |
+          echo "${{ github.env.inputs.server_url }}" > .env
+          echo "${{ github.env.inputs.server_type }}" >> .env
+        shell: bash
+
+      - name: Build Windows app
+        working-directory: frontend
+        # the cargo make script has to be run separately because of file locking issues
+        run: |
+          flutter config --enable-windows-desktop
+          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ github.event.inputs.build_name }}
+          cargo make --env APP_VERSION=${{ github.event.inputs.build_name }} --profile production-windows-x86 appflowy
+          dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ github.event.inputs.build_name }}
+
+      - name: Archive Asset
+        uses: vimtor/action-zip@v1
+        with:
+          files: ${{ env.WINDOWS_APP_RELEASE_PATH }}\
+          dest: ${{ env.WINDOWS_APP_RELEASE_PATH }}\${{ env.WINDOWS_ZIP_NAME }}
+
+      - name: Copy installer config & icon file
+        working-directory: frontend
+        run: |
+          cp scripts/windows_installer/* ../${{ env.WINDOWS_APP_RELEASE_PATH }}
+
+      - name: Build installer executable
+        working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
+        run: |
+          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ github.event.inputs.build_name }}
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.WINDOWS_INSTALLER_NAME }}.exe
+          path: ${{ env.WINDOWS_APP_RELEASE_PATH }}\Output\${{ env.WINDOWS_INSTALLER_NAME }}.exe
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.WINDOWS_ZIP_NAME }}
+          path: ${{ env.WINDOWS_APP_RELEASE_PATH }}/${{ env.WINDOWS_ZIP_NAME }}

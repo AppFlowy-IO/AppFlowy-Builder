@@ -1,0 +1,140 @@
+name: Build AppFlowy iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Repo"
+        required: true
+        default: "AppFlowy-IO/AppFlowy"
+      branch:
+        description: "Branch"
+        required: true
+        default: "main"
+      build_name:
+        description: "Build Version (it should match the version in pubspec.yaml)"
+        required: true
+        default: "0.4.3"
+      build_number:
+        description: "Build Number (it should be unique)"
+        required: true
+        default: "1"
+      server_type:
+        type: choice
+        description: 'Server Type (1 for local, 2 for cloud)'
+        required: true
+        default: '2'
+        options:
+            - 1
+            - 2
+      server_url:
+        description: 'Server URL'
+        required: true
+        default: 'https://beta.appflowy.cloud'
+
+env:
+  FLUTTER_VERSION: "3.18.0-0.2.pre"
+  RUST_TOOLCHAIN: "1.75"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-latest]
+        include:
+          - target: aarch64-apple-ios
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.event.inputs.repo }}
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Install the Apple certificate and provisioning profile
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          # create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # import certificate and provisioning profile from secrets
+          echo -n "$IOS_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$IOS_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          # create temporary keychain
+          security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # apply provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+
+      - name: Install Rust toolchain
+        id: rust_toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.target }}
+          override: true
+          profile: minimal
+
+      - name: Install flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "beta"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ${{ matrix.os }}
+          workspaces: |
+            frontend/rust-lib
+
+      - uses: davidB/rust-cargo-make@v1
+        with:
+          version: '0.37.5'
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          rustup target install aarch64-apple-ios
+          cargo install --force duckscript_cli
+          cargo install --force cargo-lipo
+          cargo make appflowy-flutter-deps-tools
+        shell: bash
+
+      - name: Generate env file
+        working-directory: frontend/appflowy_flutter
+        run: |
+          echo "${{ github.env.inputs.server_url }}" > .env
+          echo "${{ github.env.inputs.server_type }}" >> .env
+        shell: bash
+
+      - name: Build AppFlowy
+        working-directory: frontend
+        run: |
+          cargo make --profile production-ios-arm64 appflowy-core-dev-ios
+          cargo make --profile production-ios-arm64 code_generation
+          cd appflowy_flutter
+          flutter build ipa --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./ --obfuscate
+
+      - name: Upload ipa
+        uses: actions/upload-artifact@v2
+        with:
+          name: AppFlowy.xcarchive
+          path: frontend/appflowy_flutter/build/ios/archive/Runner.xcarchive
