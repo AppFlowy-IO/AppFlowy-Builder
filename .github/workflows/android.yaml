@@ -3,14 +3,14 @@ name: Build AppFlowy Android
 on:
   workflow_dispatch:
     inputs:
-        branch:
-          description: "Branch"
-          required: true
-          default: "main"
         repo:
           description: "Repo"
           required: true
           default: "AppFlowy-IO/AppFlowy"
+        ref:
+          description: "Branch, Tag or Commit"
+          required: true
+          default: "main"
         build_name:
             description: "Build Version (it should match the version in pubspec.yaml)"
             required: true
@@ -55,109 +55,20 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      # the following step is required to avoid running out of space
-      - name: Maximize build space
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+      - uses: actions/checkout@v3
 
-      - name: Checkout source code
-        uses: actions/checkout@v2
+      - uses: ./.github/actions/build_android
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
-
-      - name: Install Rust toolchain
-        id: rust_toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.target }}
-          override: true
-          profile: minimal
-
-      - name: Install flutter
-        id: flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "beta"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true
-
-      - uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-            ndk-version: "r24"
-            add-to-path: true
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ matrix.os }}
-          workspaces: |
-            frontend/rust-lib
-
-      - uses: davidB/rust-cargo-make@v1
-        with:
-          version: '0.37.5'
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          rustup target install aarch64-linux-android
-          cargo install --force duckscript_cli
-          cargo install cargo-ndk
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
-            sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
-            sudo apt-get update
-            sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
-            sudo apt-get install keybinder-3.0 libnotify-dev
-            sudo apt-get install gcc-multilib
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            vcpkg integrate install
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo 'do nothing'
-          fi
-          cargo make appflowy-flutter-deps-tools
-        shell: bash
-
-      - name: Generate env file
-        working-directory: frontend/appflowy_flutter
-        run: |
-          echo "${{ github.env.inputs.server_url }}" > .env
-          echo "${{ github.env.inputs.server_type }}" >> .env
-        shell: bash
-
-      - name: Configure release sign
-        working-directory: frontend/appflowy_flutter/android/app
-        run: |
-          # replace signingConfig signingConfigs.debug with signingConfig signingConfigs.release
-          sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/g' build.gradle
-
-      - name: Configure key.properties
-        working-directory: frontend/appflowy_flutter/android
-        run: |
-          echo "${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}" | base64 --decode > app/upload-keystore.jks
-          echo -e "storePassword=${{ secrets.ANDROID_UPLOAD_KEYSTORE_STORE_PASSWORD }}\nkeyPassword=${{ secrets.ANDROID_UPLOAD_KEYSTORE_KEY_PASSWORD }}\nkeyAlias=upload\nstoreFile=upload-keystore.jks" > key.properties
-        shell: bash
-
-      - name: Build AppFlowy
-        working-directory: frontend
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: |
-            cargo make --profile production-android appflowy-core-dev-android
-            sh scripts/code_generation/generate.sh
-            cd appflowy_flutter
-            flutter pub get
-            if [ ${{github.event.inputs.build_type}} = "apk" ]; then
-              flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./ --obfuscate
-            elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
-              flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./ --obfuscate
-            fi
+          repo: ${{ github.event.inputs.repo }}
+          ref: ${{ github.event.inputs.ref }}
+          build_name: ${{ github.event.inputs.build_name }}
+          build_number: ${{ github.event.inputs.build_number }}
+          build_type: ${{ github.event.inputs.build_type }}
+          server_type: ${{ github.event.inputs.server_type }}
+          server_url: ${{ github.event.inputs.server_url }}
+          android_upload_keystore_base64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          android_upload_keystore_store_password: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_STORE_PASSWORD }}
+          android_upload_keystore_key_password: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_KEY_PASSWORD }}
 
       - name: Rename APK
         if: github.event.inputs.build_type == 'apk'
