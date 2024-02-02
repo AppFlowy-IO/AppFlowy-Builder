@@ -14,11 +14,11 @@ on:
         build_name:
             description: "Build Version (it should match the version in pubspec.yaml)"
             required: true
-            default: "0.4.3"
+            default: "0.4.5"
         build_number:
             description: 'Build Number (it should be unique)'
             required: true
-            default: "2904300"
+            default: "2904500"
         build_type:
             type: choice
             description: 'Build Type'
@@ -150,9 +150,8 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
             cargo make --profile production-android appflowy-core-dev-android
-            sh scripts/code_generation/generate.sh
+            cargo make --profile production-android code_generation
             cd appflowy_flutter
-            flutter pub get
             if [ ${{github.event.inputs.build_type}} = "apk" ]; then
               flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./ --obfuscate
             elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
