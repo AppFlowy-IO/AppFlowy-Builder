@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.4.5"
+        default: "0.4.4"
       build_number:
         description: "Build Number (it should be unique)"
         required: true
@@ -33,7 +33,7 @@ on:
         default: 'https://beta.appflowy.cloud'
 
 env:
-  FLUTTER_VERSION: "3.18.0-0.2.pre"
+  FLUTTER_VERSION: "3.19.0"
   RUST_TOOLCHAIN: "1.75"
 
 jobs:
@@ -52,6 +52,10 @@ jobs:
         with:
           repository: ${{ github.event.inputs.repo }}
           ref: ${{ github.event.inputs.branch }}
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Install the Apple certificate and provisioning profile
         env:
@@ -95,7 +99,7 @@ jobs:
         id: flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: "beta"
+          channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
