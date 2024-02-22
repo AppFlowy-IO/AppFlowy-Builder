@@ -147,7 +147,7 @@ jobs:
       - name: Install flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: "beta"
+          channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Install Rust toolchain
@@ -246,7 +246,7 @@ jobs:
       - name: Install flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: "beta"
+          channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Install Rust toolchain
