@@ -48,6 +48,11 @@ jobs:
           repository: ${{ github.event.inputs.repo }}
           ref: ${{ github.event.inputs.branch }}
 
+      - name: Export pub environment variable on Windows
+        run: |
+          echo "PUB_CACHE=$LOCALAPPDATA\\Pub\\Cache" >> $GITHUB_ENV
+        shell: bash
+
       - name: Install flutter
         uses: subosito/flutter-action@v2
         with:
