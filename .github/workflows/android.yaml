@@ -168,8 +168,15 @@ jobs:
         if: github.event.inputs.build_type == 'apk'
         uses: actions/upload-artifact@v2
         with:
-          name: AppFlowy-${{ github.event.inputs.build_name }}.apk
-          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy.apk
+          name: AppFlowy-${{ github.event.inputs.build_name }}-android-arm64-v8a.apk
+          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+
+      - name: Upload APK
+        if: github.event.inputs.build_type == 'apk'
+        uses: actions/upload-artifact@v2
+        with:
+          name: AppFlowy-${{ github.event.inputs.build_name }}-android-armeabi-v7a.apk
+          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
 
       - name: Rename AAB
         if: github.event.inputs.build_type  == 'appbundle'
