@@ -159,12 +159,6 @@ jobs:
               flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./ --obfuscate
             fi
 
-      - name: Rename APK
-        if: github.event.inputs.build_type == 'apk'
-        run: |
-          mv frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy.apk
-        shell: bash
-
       - name: Upload APK
         if: github.event.inputs.build_type == 'apk'
         uses: actions/upload-artifact@v2
