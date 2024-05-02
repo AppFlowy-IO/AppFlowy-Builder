@@ -70,6 +70,11 @@ jobs:
           repository: ${{ github.event.inputs.repo }}
           ref: ${{ github.event.inputs.branch }}
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin' # See 'Supported distributions' for available options
+          java-version: '17'
+
       - name: Install Rust toolchain
         id: rust_toolchain
         uses: actions-rs/toolchain@v1
