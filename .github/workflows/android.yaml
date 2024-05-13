@@ -3,14 +3,14 @@ name: Build AppFlowy Android
 on:
   workflow_dispatch:
     inputs:
-        branch:
-          description: "Branch"
-          required: true
-          default: "main"
         repo:
           description: "Repo"
           required: true
           default: "AppFlowy-IO/AppFlowy"
+        branch:
+          description: "Branch"
+          required: true
+          default: "main"
         build_name:
             description: "Build Version (it should match the version in pubspec.yaml)"
             required: true
