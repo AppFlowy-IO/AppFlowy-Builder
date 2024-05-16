@@ -41,7 +41,7 @@ on:
 
 env:
   FLUTTER_VERSION: "3.19.0"
-  RUST_TOOLCHAIN: "1.75"
+  RUST_TOOLCHAIN: "1.77.2"
 
 jobs:
   build:
@@ -95,7 +95,7 @@ jobs:
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-            ndk-version: "r24"
+            ndk-version: "r26d"
             add-to-path: true
 
       - uses: Swatinem/rust-cache@v2
@@ -114,7 +114,7 @@ jobs:
           rustup target install aarch64-linux-android
           rustup target install armv7-linux-androideabi
           cargo install --force duckscript_cli
-          cargo install cargo-ndk
+          cargo install --version 3.3.0 cargo-ndk
           if [ "$RUNNER_OS" == "Linux" ]; then
             sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
             sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
