@@ -29,7 +29,7 @@ on:
         default: 'https://beta.appflowy.cloud'
 
 env:
-  FLUTTER_VERSION: "3.19.0"
+  FLUTTER_VERSION: "3.22.0"
   RUST_TOOLCHAIN: "1.75"
 
 jobs:
