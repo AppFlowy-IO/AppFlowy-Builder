@@ -137,7 +137,7 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { target: x86_64-apple-darwin, os: macos-11 }
+          - { target: x86_64-apple-darwin, os: macos-14 }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
       MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64
@@ -271,6 +271,7 @@ jobs:
           sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
           sudo apt-get install keybinder-3.0 libnotify-dev
           sudo apt-get -y install alien
+          sudo apt install libmpv-dev mpv
           source $HOME/.cargo/env
           cargo install --force cargo-make
           cargo install --force duckscript_cli
