@@ -174,7 +174,8 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.prepare.outputs.version }}
+          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ needs.prepare.outputs.version }}
+          cargo make --profile production-mac-x86_64 appflowy
 
       - name: Check for Code signing ID
         run: |
