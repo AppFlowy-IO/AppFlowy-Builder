@@ -94,8 +94,11 @@ jobs:
       - name: Build AppFlowy
         working-directory: frontend
         run: |
+          cd appflowy_flutter
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ github.event.inputs.build_name }}
+          flutter pub get
+          flutter packages pub get
+          cd ..
           cargo make --profile production-mac-x86_64 appflowy
 
       - name: Codesign AppFlowy
@@ -194,8 +197,11 @@ jobs:
       - name: Build AppFlowy
         working-directory: frontend
         run: |
+          cd appflowy_flutter
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ github.event.inputs.build_name }}
+          flutter pub get
+          flutter packages pub get
+          cd ..
           cargo make --profile production-mac-arm64 appflowy
 
       - name: Codesign AppFlowy
