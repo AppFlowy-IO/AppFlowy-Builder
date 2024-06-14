@@ -142,7 +142,7 @@ jobs:
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
 
   aarch64:
-    runs-on: macos-13-xlarge
+    runs-on: macos-14
 
     if: ${{ github.event.inputs.arch == 'All' || github.event.inputs.arch == 'aarch64' }}
 
