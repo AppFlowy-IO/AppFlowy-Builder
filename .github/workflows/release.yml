@@ -140,7 +140,7 @@ jobs:
           - { target: x86_64-apple-darwin, os: macos-latest }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
-      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-x86_64
+      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-universal
       MACOS_CODESIGN_ID: ${{ secrets.MACOS_CODESIGN_ID }}
     steps:
       - name: Checkout source code
@@ -174,8 +174,8 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ needs.prepare.outputs.version }}
-          cargo make --profile production-mac-x86_64 appflowy
+          sh scripts/flutter_release_build/build_universal_package_for_macos.sh ${{ needs.prepare.outputs.version }}
+
 
       - name: Check for Code signing ID
         run: |
