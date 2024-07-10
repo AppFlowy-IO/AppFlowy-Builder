@@ -14,7 +14,7 @@ on:
         build_name:
             description: "Build Version (it should match the version in pubspec.yaml)"
             required: true
-            default: "0.4.4"
+            default: "0.6.4"
         build_number:
             description: 'Build Number (it should be unique)'
             required: true
@@ -26,18 +26,14 @@ on:
             options:
                 - 'apk'
                 - 'appbundle'
-        server_type:
+        internal_build:
           type: choice
-          description: 'Server Type (1 for local, 2 for cloud)'
+          description: 'Internal Build Type (1 for internal, 0 for external)'
           required: true
-          default: '2'
+          default: '1'
           options:
+              - 0
               - 1
-              - 2
-        server_url:
-          description: 'Server URL'
-          required: true
-          default: 'https://beta.appflowy.cloud'
 
 env:
   FLUTTER_VERSION: "3.22.0"
@@ -134,8 +130,7 @@ jobs:
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "${{ github.env.inputs.server_url }}" > .env
-          echo "${{ github.env.inputs.server_type }}" >> .env
+          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
         shell: bash
 
       - name: Configure release sign
