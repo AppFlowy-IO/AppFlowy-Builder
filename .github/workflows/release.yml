@@ -325,10 +325,7 @@ jobs:
 
   notify-failure:
     runs-on: ubuntu-latest
-    needs:
-      - build-for-macOS-x86_64
-      - build-for-windows
-      - build-for-linux
+    needs: [build-for-linux, build-for-windows, build-for-macOS]
     if: failure()
     steps:
       - uses: 8398a7/action-slack@v3
