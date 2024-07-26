@@ -323,6 +323,24 @@ jobs:
           asset_name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
           asset_content_type: application/octet-stream
 
+  notify-failure:
+    runs-on: ubuntu-latest
+    needs:
+      - build-for-macOS-x86_64
+      - build-for-windows
+      - build-for-linux
+    if: failure()
+    steps:
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🔴🔴🔴Workflow ${{ github.workflow }} in repository ${{ github.repository }} was failed 🔴🔴🔴.
+          fields: repo,message,author,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK }}
+        if: always()
+
   notify-slack:
     runs-on: ubuntu-latest
     needs: [build-for-linux, build-for-windows, build-for-macOS]
