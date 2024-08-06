@@ -50,10 +50,11 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: ${{ github.event.inputs.repo }}
           ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 1
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
