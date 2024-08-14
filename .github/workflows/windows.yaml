@@ -17,12 +17,12 @@ on:
         default: "0.6.4"
       internal_build:
         type: choice
-        description: 'Internal Build Type (1 for internal, 0 for external)'
+        description: "Internal Build Type (1 for internal, 0 for external)"
         required: true
-        default: '1'
+        default: "1"
         options:
-            - 0
-            - 1
+          - 0
+          - 1
 
 env:
   FLUTTER_VERSION: "3.22.0"
@@ -62,7 +62,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: '0.37.5'
+          version: "0.37.5"
 
       - name: Install prerequisites
         working-directory: frontend

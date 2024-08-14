@@ -3,37 +3,37 @@ name: Build AppFlowy Android
 on:
   workflow_dispatch:
     inputs:
-        repo:
-          description: "Repo"
-          required: true
-          default: "AppFlowy-IO/AppFlowy"
-        branch:
-          description: "Branch"
-          required: true
-          default: "main"
-        build_name:
-            description: "Build Version (it should match the version in pubspec.yaml)"
-            required: true
-            default: "0.6.4"
-        build_number:
-            description: 'Build Number (it should be unique)'
-            required: true
-            default: "2904300"
-        build_type:
-            type: choice
-            description: 'Build Type'
-            required: true
-            options:
-                - 'apk'
-                - 'appbundle'
-        internal_build:
-          type: choice
-          description: 'Internal Build Type (1 for internal, 0 for external)'
-          required: true
-          default: '1'
-          options:
-              - 0
-              - 1
+      repo:
+        description: "Repo"
+        required: true
+        default: "AppFlowy-IO/AppFlowy"
+      branch:
+        description: "Branch"
+        required: true
+        default: "main"
+      build_name:
+        description: "Build Version (it should match the version in pubspec.yaml)"
+        required: true
+        default: "0.6.4"
+      build_number:
+        description: "Build Number (it should be unique)"
+        required: true
+        default: "2904300"
+      build_type:
+        type: choice
+        description: "Build Type"
+        required: true
+        options:
+          - "apk"
+          - "appbundle"
+      internal_build:
+        type: choice
+        description: "Internal Build Type (1 for internal, 0 for external)"
+        required: true
+        default: "1"
+        options:
+          - 0
+          - 1
 
 env:
   FLUTTER_VERSION: "3.22.0"
@@ -68,8 +68,8 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin' # See 'Supported distributions' for available options
-          java-version: '17'
+          distribution: "temurin" # See 'Supported distributions' for available options
+          java-version: "17"
 
       - name: Install Rust toolchain
         id: rust_toolchain
@@ -91,8 +91,8 @@ jobs:
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-            ndk-version: "r26d"
-            add-to-path: true
+          ndk-version: "r26d"
+          add-to-path: true
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -102,7 +102,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: '0.37.5'
+          version: "0.37.5"
 
       - name: Install prerequisites
         working-directory: frontend
@@ -131,6 +131,7 @@ jobs:
         working-directory: frontend/appflowy_flutter
         run: |
           echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
         shell: bash
 
       - name: Configure release sign
@@ -151,14 +152,14 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-            cargo make --profile production-android appflowy-core-dev-android
-            cargo make --profile production-android code_generation
-            cd appflowy_flutter
-            if [ ${{github.event.inputs.build_type}} = "apk" ]; then
-              flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./ --obfuscate
-            elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
-              flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./ --obfuscate
-            fi
+          cargo make --profile production-android appflowy-core-dev-android
+          cargo make --profile production-android code_generation
+          cd appflowy_flutter
+          if [ ${{github.event.inputs.build_type}} = "apk" ]; then
+            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./ --obfuscate
+          elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
+            flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./ --obfuscate
+          fi
 
       - name: Upload APK
         if: github.event.inputs.build_type == 'apk'

@@ -17,21 +17,21 @@ on:
         default: "0.6.4"
       arch:
         type: choice
-        description: 'Build Architecture'
+        description: "Build Architecture"
         required: true
         options:
-            - All
-            - x86_64
-            - aarch64
-            - universal
+          - All
+          - x86_64
+          - aarch64
+          - universal
       internal_build:
         type: choice
-        description: 'Internal Build Type (1 for internal, 0 for external)'
+        description: "Internal Build Type (1 for internal, 0 for external)"
         required: true
-        default: '1'
+        default: "1"
         options:
-            - 0
-            - 1
+          - 0
+          - 1
 
 env:
   FLUTTER_VERSION: "3.22.0"
@@ -73,7 +73,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: '0.37.5'
+          version: "0.37.5"
 
       - name: Install prerequisites
         working-directory: frontend
@@ -171,7 +171,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: '0.37.5'
+          version: "0.37.5"
 
       - name: Install prerequisites
         working-directory: frontend
@@ -237,7 +237,6 @@ jobs:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
 
-
   universal:
     runs-on: macos-latest
 
@@ -271,7 +270,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: '0.37.5'
+          version: "0.37.5"
 
       - name: Install prerequisites
         working-directory: frontend
