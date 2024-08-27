@@ -156,15 +156,15 @@ jobs:
           cargo make --profile production-android code_generation
           cd appflowy_flutter
           if [ ${{github.event.inputs.build_type}} = "apk" ]; then
-            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./symbols --obfuscate
+            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./debug_info --obfuscate
           elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
-            flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./symbols --obfuscate
+            flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           fi
 
       - name: Compress debug symbols
         working-directory: frontend/appflowy_flutter
         run: |
-          tar -czf debug-symbols.tar.gz symbols
+          tar -czf debug-symbols.tar.gz debug_info
 
       - name: Upload APK
         if: github.event.inputs.build_type == 'apk'
@@ -198,3 +198,14 @@ jobs:
         with:
           name: AppFlowy-${{ github.event.inputs.build_name }}-debug-symbols
           path: frontend/appflowy_flutter/debug-symbols.tar.gz
+
+      - name: Setup Sentry CLI
+        uses: mathieu-bour/setup-sentry-cli@v1
+        with:
+          version: latest
+          token: ${{ SECRETS.SENTRY_TOKEN }}
+          organization: appflowy
+          project: appflowy
+
+      - name: Upload symbols to Sentry
+        run: sentry-cli debug-files upload -o appflowy -p appflowy frontend/appflowy_flutter/debug_info

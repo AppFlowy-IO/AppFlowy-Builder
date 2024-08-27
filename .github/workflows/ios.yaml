@@ -146,17 +146,13 @@ jobs:
           name: debug-symbols
           path: frontend/appflowy_flutter/debug_info
 
-  notify-failure:
-    runs-on: ubuntu-latest
-    needs: build
-    if: failure()
-    steps:
-      - uses: 8398a7/action-slack@v3
+      - name: Setup Sentry CLI
+        uses: mathieu-bour/setup-sentry-cli@v1
         with:
-          status: ${{ job.status }}
-          text: |
-            🔴🔴🔴 Workflow ${{ github.workflow }} in repository ${{ github.repository }} was failed 🔴🔴🔴.
-          fields: repo,message,author,eventName,ref,workflow
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: always()
+          version: latest
+          token: ${{ SECRETS.SENTRY_TOKEN }}
+          organization: appflowy
+          project: appflowy
+
+      - name: Upload symbols to Sentry
+        run: sentry-cli debug-files upload -o appflowy -p appflowy frontend/appflowy_flutter/debug_info
