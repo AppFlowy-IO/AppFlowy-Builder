@@ -156,10 +156,15 @@ jobs:
           cargo make --profile production-android code_generation
           cd appflowy_flutter
           if [ ${{github.event.inputs.build_type}} = "apk" ]; then
-            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./ --obfuscate
+            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./symbols --obfuscate
           elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
-            flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./ --obfuscate
+            flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./symbols --obfuscate
           fi
+
+      - name: Compress debug symbols
+        working-directory: frontend/appflowy_flutter
+        run: |
+          tar -czf debug-symbols.tar.gz symbols
 
       - name: Upload APK
         if: github.event.inputs.build_type == 'apk'
@@ -187,3 +192,9 @@ jobs:
         with:
           name: AppFlowy-${{ github.event.inputs.build_name }}.aab
           path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy.aab
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v2
+        with:
+          name: AppFlowy-${{ github.event.inputs.build_name }}-debug-symbols
+          path: frontend/appflowy_flutter/debug-symbols.tar.gz
