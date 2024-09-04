@@ -155,4 +155,4 @@ jobs:
           project: appflowy
 
       - name: Upload symbols to Sentry
-        run: sentry-cli debug-files upload -o appflowy -p appflowy frontend/appflowy_flutter/debug_info
+        run: sentry-cli debug-files upload -o appflowy -p appflowy frontend/appflowy_flutter/build
