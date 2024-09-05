@@ -108,22 +108,15 @@ jobs:
         working-directory: frontend
         run: |
           rustup target install aarch64-linux-android
-          rustup target install armv7-linux-androideabi
           cargo install --force duckscript_cli
           cargo install --version 3.3.0 cargo-ndk
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
-            sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
-            sudo apt-get update
-            sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
-            sudo apt-get install keybinder-3.0 libnotify-dev
-            sudo apt-get install gcc-multilib
-            sudo apt-get -y install libmpv-dev mpv
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            vcpkg integrate install
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo 'do nothing'
-          fi
+          sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
+          sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
+          sudo apt-get update
+          sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install keybinder-3.0 libnotify-dev
+          sudo apt-get install gcc-multilib
+          sudo apt-get -y install libmpv-dev mpv
           cargo make appflowy-flutter-deps-tools
         shell: bash
 
@@ -152,11 +145,12 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          cargo make --profile production-android appflowy-core-dev-android
-          cargo make --profile production-android code_generation
+          cargo make --profile production-android appflowy-core-dev-android &
+          cargo make --profile production-android code_generation &
+          wait
           cd appflowy_flutter
           if [ ${{github.event.inputs.build_type}} = "apk" ]; then
-            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-per-abi --split-debug-info=./debug_info --obfuscate
+            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
             flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           fi
@@ -166,24 +160,23 @@ jobs:
         run: |
           tar -czf debug-symbols.tar.gz debug_info
 
-      - name: Upload APK
+      - name: Rename APK
         if: github.event.inputs.build_type == 'apk'
-        uses: actions/upload-artifact@v2
-        with:
-          name: AppFlowy-${{ github.event.inputs.build_name }}-android-arm64-v8a.apk
-          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+        run: |
+          mv frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-release.apk frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ github.event.inputs.build_name }}-android.apk
+        shell: bash
 
       - name: Upload APK
         if: github.event.inputs.build_type == 'apk'
         uses: actions/upload-artifact@v2
         with:
-          name: AppFlowy-${{ github.event.inputs.build_name }}-android-armeabi-v7a.apk
-          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          name: AppFlowy-${{ github.event.inputs.build_name }}-android.apk
+          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ github.event.inputs.build_name }}-android.apk
 
       - name: Rename AAB
-        if: github.event.inputs.build_type  == 'appbundle'
+        if: github.event.inputs.build_type == 'appbundle'
         run: |
-          mv frontend/appflowy_flutter/build/app/outputs/bundle/release/app-release.aab frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy.aab
+          mv frontend/appflowy_flutter/build/app/outputs/bundle/release/app-release.aab frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ github.event.inputs.build_name }}.aab
         shell: bash
 
       - name: Upload AAB
@@ -191,7 +184,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: AppFlowy-${{ github.event.inputs.build_name }}.aab
-          path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy.aab
+          path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ github.event.inputs.build_name }}.aab
 
       - name: Upload debug symbols
         uses: actions/upload-artifact@v2
