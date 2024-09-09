@@ -125,13 +125,13 @@ jobs:
         run: zip --symlinks -qr ${{ env.MACOS_X86_ZIP_NAME }} AppFlowy.app
 
       - name: Upload ZIP
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MACOS_X86_ZIP_NAME }}
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_ZIP_NAME }}
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
@@ -225,13 +225,13 @@ jobs:
         run: zip --symlinks -qr ${{ env.MACOS_AARCH64_ZIP_NAME }} AppFlowy.app
 
       - name: Upload ZIP
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MACOS_AARCH64_ZIP_NAME }}
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_AARCH64_ZIP_NAME }}
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
@@ -337,13 +337,13 @@ jobs:
         run: zip --symlinks -qr ${{ env.MACOS_AARCH64_ZIP_NAME }} AppFlowy.app
 
       - name: Upload ZIP
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MACOS_AARCH64_ZIP_NAME }}
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_AARCH64_ZIP_NAME }}
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg

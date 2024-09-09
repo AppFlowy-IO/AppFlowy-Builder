@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload APK
         if: github.event.inputs.build_type == 'apk'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: AppFlowy-${{ github.event.inputs.build_name }}-android.apk
           path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ github.event.inputs.build_name }}-android.apk
@@ -181,13 +181,13 @@ jobs:
 
       - name: Upload AAB
         if: github.event.inputs.build_type  == 'appbundle'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: AppFlowy-${{ github.event.inputs.build_name }}.aab
           path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ github.event.inputs.build_name }}.aab
 
       - name: Upload debug symbols
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: AppFlowy-${{ github.event.inputs.build_name }}-debug-symbols
           path: frontend/appflowy_flutter/debug-symbols.tar.gz

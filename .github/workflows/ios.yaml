@@ -136,13 +136,13 @@ jobs:
           flutter build ipa --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
 
       - name: Upload ipa
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: AppFlowy.xcarchive
           path: frontend/appflowy_flutter/build/ios/archive/Runner.xcarchive
 
       - name: Upload debug symbols
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: debug-symbols
           path: frontend/appflowy_flutter/debug_info
