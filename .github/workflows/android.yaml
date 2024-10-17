@@ -145,9 +145,9 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          cargo make --profile production-android appflowy-core-dev-android &
-          cargo make --profile production-android code_generation &
-          wait
+          cargo make --profile production-android appflowy-core-dev-android
+          cargo make --profile production-android code_generation
+
           cd appflowy_flutter
           if [ ${{github.event.inputs.build_type}} = "apk" ]; then
             flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
