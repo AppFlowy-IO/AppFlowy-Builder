@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.7.4"
+        default: "0.7.6"
       arch:
         type: choice
         description: "Build Architecture"
