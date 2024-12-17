@@ -100,7 +100,7 @@ jobs:
         run: |
           vcpkg integrate install
           cargo install --force cargo-make
-          cargo install --force duckscript_cli
+          cargo install duckscript_cli --force --locked
 
       - name: Build Windows app
         working-directory: frontend
@@ -168,7 +168,7 @@ jobs:
         working-directory: frontend
         run: |
           cargo install --force cargo-make
-          cargo install --force duckscript_cli
+          cargo install duckscript_cli --force --locked
 
       - name: Build AppFlowy
         working-directory: frontend
@@ -274,7 +274,7 @@ jobs:
           sudo apt install libmpv-dev mpv
           source $HOME/.cargo/env
           cargo install --force cargo-make
-          cargo install --force duckscript_cli
+          cargo install duckscript_cli --force --locked
           rustup target add ${{ matrix.job.target }}
 
       - name: Install gcc-aarch64-linux-gnu
