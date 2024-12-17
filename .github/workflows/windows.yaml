@@ -26,7 +26,7 @@ on:
 
 env:
   FLUTTER_VERSION: "3.22.0"
-  RUST_TOOLCHAIN: "1.80.1"
+  RUST_TOOLCHAIN: "1.81"
 
 jobs:
   build:
