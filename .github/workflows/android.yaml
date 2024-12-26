@@ -109,7 +109,7 @@ jobs:
         run: |
           rustup target install aarch64-linux-android
           cargo install duckscript_cli --force --locked
-          cargo install --version 3.3.0 cargo-ndk
+          cargo install --version 3.3.0 cargo-ndk --locked
           sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
           sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
           sudo apt-get update

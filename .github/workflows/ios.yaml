@@ -115,7 +115,7 @@ jobs:
         run: |
           rustup target install aarch64-apple-ios
           cargo install duckscript_cli --force --locked
-          cargo install --force cargo-lipo
+          cargo install cargo-lipo --force --locked
           cargo make appflowy-flutter-deps-tools
         shell: bash
 
