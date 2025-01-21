@@ -6,7 +6,7 @@ on:
       - "*"
 
 env:
-  FLUTTER_VERSION: "3.22.0"
+  FLUTTER_VERSION: "3.22.3"
   RUST_TOOLCHAIN: "1.80.1"
 
 jobs:
@@ -99,7 +99,7 @@ jobs:
         working-directory: frontend
         run: |
           vcpkg integrate install
-          cargo install cargo-make --force --locked
+          cargo install cargo-make --force --locked --version 0.37.5
           cargo install duckscript_cli --force --locked
 
       - name: Build Windows app
@@ -167,7 +167,7 @@ jobs:
       - name: Install prerequisites
         working-directory: frontend
         run: |
-          cargo install cargo-make --force --locked
+          cargo install cargo-make --force --locked --version 0.37.5
           cargo install duckscript_cli --force --locked
 
       - name: Build AppFlowy
@@ -273,7 +273,7 @@ jobs:
           sudo apt-get -y install alien
           sudo apt install libmpv-dev mpv
           source $HOME/.cargo/env
-          cargo install cargo-make --force --locked
+          cargo install cargo-make --force --locked --version 0.37.5
           cargo install duckscript_cli --force --locked
           rustup target add ${{ matrix.job.target }}
 
