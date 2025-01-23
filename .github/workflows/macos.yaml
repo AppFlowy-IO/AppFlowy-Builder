@@ -39,7 +39,7 @@ env:
 
 jobs:
   x86_64:
-    runs-on: macos-13
+    runs-on: macos-14
 
     if: ${{ github.event.inputs.arch == 'All' || github.event.inputs.arch == 'x86_64' }}
 
@@ -117,6 +117,7 @@ jobs:
           "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
 
       - name: Notarize AppFlowy
+        continue-on-error: true
         run: |
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
@@ -329,6 +330,7 @@ jobs:
 
       - name: Notarize AppFlowy
         if: ${{ steps.secret-check.outputs.available == 'true' }}
+        continue-on-error: true
         run: |
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
