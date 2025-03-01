@@ -40,11 +40,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/build/${{ github.event.inputs.build_name }}
-      LINUX_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux.tar.gz
+      LINUX_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux-x86_64.zip
       LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux-x86_64.deb
       LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux-x86_64.rpm
-      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ github.event.inputs.build_name }}-2.x86_64.rpm
-      LINUX_PACKAGE_APPIMAGE_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux-x86_64.AppImage
 
     steps:
       # the following step is required to avoid running out of space

@@ -92,6 +92,7 @@ jobs:
         run: |
           flutter config --enable-macos-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
+          dart pub global activate flutter_distributor
           ./scripts/flutter_release_build/build_macos.sh --build_type all --build_arch x86_64 --version ${{ github.event.inputs.build_name }} --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }}
 
       - name: Upload ZIP
@@ -103,7 +104,7 @@ jobs:
       - name: Upload TAR
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MACOS_X86_ZIP_NAME }}
+          name: ${{ env.MACOS_X86_TAR_NAME }}
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_TAR_NAME }}
 
       - name: Upload DMG
@@ -166,6 +167,7 @@ jobs:
         run: |
           flutter config --enable-macos-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
+          dart pub global activate flutter_distributor
           ./scripts/flutter_release_build/build_macos.sh --build_type all --build_arch arm64 --version ${{ github.event.inputs.build_name }} --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }}
 
       - name: Upload ZIP
@@ -177,7 +179,7 @@ jobs:
       - name: Upload TAR
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MACOS_AARCH64_ZIP_NAME }}
+          name: ${{ env.MACOS_AARCH64_TAR_NAME }}
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_AARCH64_TAR_NAME }}
 
       - name: Upload DMG
@@ -239,6 +241,7 @@ jobs:
         run: |
           flutter config --enable-macos-desktop
           sh scripts/flutter_release_build/build_universal_package_for_macos.sh ${{ github.event.inputs.build_name }}
+          dart pub global activate flutter_distributor
           ./scripts/flutter_release_build/build_macos.sh --build_type all --build_arch universal --version ${{ github.event.inputs.build_name }} --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }}
 
       - name: Upload ZIP
