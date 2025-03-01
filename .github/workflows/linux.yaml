@@ -39,7 +39,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     env:
-      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.event.inputs.build_name }}/linux/Release
+      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/build/${{ github.event.inputs.build_name }}
       LINUX_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux.tar.gz
       LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux-x86_64.deb
       LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ github.event.inputs.build_name }}-linux-x86_64.rpm
@@ -113,44 +113,14 @@ jobs:
         run: |
           flutter config --enable-linux-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
-
-      - name: Archive Asset
-        working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
-
-      - name: Build Linux package (.AppImage)
-        working-directory: frontend
-        continue-on-error: true
-        run: |
-          sh scripts/linux_distribution/appimage/build_appimage.sh ${{ github.event.inputs.build_name }}
-
-      - name: Build Linux package (.deb)
-        working-directory: frontend
-        run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ github.event.inputs.build_name }}/linux/Release ${{ github.event.inputs.build_name }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
-
-      - name: Build Linux package (.rpm)
-        working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: |
-          sudo alien -r ${{ env.LINUX_PACKAGE_DEB_NAME }}
-          cp -r ${{ env.LINUX_PACKAGE_TMP_RPM_NAME }} ${{ env.LINUX_PACKAGE_RPM_NAME }}
+          dart pub global activate flutter_distributor
+          ./scripts/flutter_release_build/build_linux.sh --build_type all --build_arch x86_64 --version ${{ github.event.inputs.build_name }}
 
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LINUX_ZIP_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_ZIP_NAME }}
-
-      - name: Upload Linux package
-        working-directory: frontend
-        run: |
-          ls -a
-
-      - name: Upload AppImage
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.LINUX_PACKAGE_APPIMAGE_NAME}}
-          path: frontend/AppFlowy-${{ github.event.inputs.build_name }}-x86_64.AppImage
 
       - name: Upload RPM
         uses: actions/upload-artifact@v4
