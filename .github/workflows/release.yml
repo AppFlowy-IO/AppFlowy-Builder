@@ -75,11 +75,6 @@ jobs:
           repository: AppFlowy-IO/AppFlowy
           ref: ${{ needs.prepare.outputs.branch_name }}
 
-      - name: Export pub environment variable on Windows
-        run: |
-          echo "PUB_CACHE=$LOCALAPPDATA\\Pub\\Cache" >> $GITHUB_ENV
-        shell: bash
-
       - name: Install flutter
         uses: subosito/flutter-action@v2
         with:
@@ -99,7 +94,6 @@ jobs:
         working-directory: frontend
         run: |
           vcpkg integrate install
-          cargo install cargo-make --force --locked --version 0.37.5
           cargo install duckscript_cli --force --locked
 
       - name: Build Windows app
