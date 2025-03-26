@@ -104,12 +104,6 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-windows-desktop
-          app_version=${{ needs.prepare.outputs.version }}
-          # If version has a fourth component (like 0.8.7.1), remove it
-          if [[ $app_version =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
-            app_version="${BASH_REMATCH[1]}"
-            echo "Trimmed version from ${{ needs.prepare.outputs.version }} to $app_version"
-          fi
           cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-windows-x86 appflowy
 
       - name: Copy installer config & icon file
