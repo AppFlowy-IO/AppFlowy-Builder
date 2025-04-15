@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.8.8"
+        default: "0.8.9"
       arch:
         type: choice
         description: "Build Architecture"
@@ -35,7 +35,7 @@ on:
 
 env:
   FLUTTER_VERSION: "3.27.4"
-  RUST_TOOLCHAIN: "1.80.1"
+  RUST_TOOLCHAIN: "1.81"
 
 jobs:
   x86_64:
