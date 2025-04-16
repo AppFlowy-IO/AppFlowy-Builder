@@ -63,10 +63,10 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { target: x86_64-pc-windows-msvc, os: windows-2019 }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
     env:
       WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.prepare.outputs.version }}\windows
-      WINDOWS_INSTALLER_NAME: AppFlowy_${{ github.ref_name }}_windows-x86_64
+      WINDOWS_INSTALLER_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-windows-x86_64
 
     steps:
       - name: Checkout source code
@@ -102,9 +102,11 @@ jobs:
 
       - name: Build Windows app
         working-directory: frontend
+        # the cargo make script has to be run separately because of file locking issues
         run: |
-          flutter config --enable-windows-desktop
+          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ needs.prepare.outputs.version }}
           cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-windows-x86 appflowy
+          dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ needs.prepare.outputs.version }}
 
       - name: Copy installer config & icon file
         working-directory: frontend
@@ -231,7 +233,7 @@ jobs:
           - {
               arch: x86_64,
               target: x86_64-unknown-linux-gnu,
-              os: ubuntu-20.04,
+              os: ubuntu-latest,
               flutter_profile: production-linux-x86_64,
             }
     env:

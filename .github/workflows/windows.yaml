@@ -35,7 +35,7 @@ jobs:
       WINDOWS_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-windows-x86_64.zip
       WINDOWS_INSTALLER_NAME: AppFlowy-${{ github.event.inputs.build_name }}-windows-x86_64
 
-    runs-on: windows-2019
+    runs-on: windows-latest
 
     steps:
       - name: Checkout source code
