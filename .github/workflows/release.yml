@@ -209,6 +209,7 @@ jobs:
           "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
 
       - name: Notarize AppFlowy
+        continue-on-error: true
         run: |
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
@@ -268,7 +269,7 @@ jobs:
         run: |
           sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
           sudo apt-get update
-          sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev libcurl4-openssl-dev
           sudo apt-get install keybinder-3.0 libnotify-dev
           sudo apt-get -y install alien
           sudo apt install libmpv-dev mpv
