@@ -25,13 +25,13 @@ on:
         required: true
         default: "1"
         options:
-          - 0
-          - 1
-          - 2
+          - "0"
+          - "1"
+          - "2"
 
 env:
   FLUTTER_VERSION: "3.27.4"
-  RUST_TOOLCHAIN: "1.81"
+  RUST_TOOLCHAIN: "1.84.0"
 
 jobs:
   build:
