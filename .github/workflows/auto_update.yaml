@@ -36,6 +36,10 @@ on:
         type: string
         default: "AppFlowy"
 
+env:
+  FLUTTER_VERSION: "3.27.4"
+  RUST_TOOLCHAIN: "1.85.0"
+
 jobs:
   macos-x86_64:
     runs-on: macos-latest
@@ -53,7 +57,7 @@ jobs:
         with:
           cache: true
           channel: "stable"
-          flutter-version: 3.27.4
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Get latest release if version not specified
         if: ${{ github.event.inputs.appflowyVersion == '' }}
@@ -164,7 +168,7 @@ jobs:
         with:
           cache: true
           channel: "stable"
-          flutter-version: 3.27.4
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Get latest release if version not specified
         if: ${{ github.event.inputs.appflowyVersion == '' }}
@@ -279,7 +283,26 @@ jobs:
         with:
           cache: true
           channel: "stable"
-          flutter-version: 3.27.4
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: x86_64-pc-windows-msvc
+          override: true
+          components: rustfmt
+          profile: minimal
+
+      - uses: davidB/rust-cargo-make@v1
+        with:
+          version: "0.37.5"
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          vcpkg integrate install
+          cargo install duckscript_cli --force --locked
 
       - name: Get latest release if version not specified
         if: ${{ github.event.inputs.appflowyVersion == '' }}
@@ -317,7 +340,10 @@ jobs:
       - name: Generate EdSignature for Windows
         working-directory: frontend/appflowy_flutter
         run: |
+          flutter config --enable-windows-desktop
           flutter pub get && flutter packages pub get
+          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . $VERSION
+          cargo make --env APP_VERSION=$VERSION --profile production-windows-x86 appflowy
           $DECODED = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}"))
           echo $DECODED > PRIVATE_KEY
           dart run auto_updater:sign_update -f PRIVATE_KEY app.exe > edSignature.txt
