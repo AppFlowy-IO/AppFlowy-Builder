@@ -90,7 +90,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          cargo make --env APP_VERSION=${{ github.event.inputs.build_name }} --profile production-mac-x64 appflowy
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
 
       - name: Codesign AppFlowy
         run: |
@@ -197,7 +197,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-macos-desktop
-          cargo make --env APP_VERSION=${{ github.event.inputs.build_name }} --profile production-mac-arm64 appflowy
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
 
       - name: Codesign AppFlowy
         run: |
