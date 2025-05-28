@@ -137,7 +137,7 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-14 }
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
       MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-universal
