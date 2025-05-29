@@ -1,0 +1,83 @@
+name: Rust-Coverage-Private
+
+on:
+  repository_dispatch:
+    types: [private-repo-pr, private-repo-push]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number from private repo'
+        required: false
+        type: string
+      pr_ref:
+        description: 'Git ref to checkout from private repo'
+        required: false
+        type: string
+        default: 'main'
+
+env:
+  CARGO_TERM_COLOR: always
+  FLUTTER_VERSION: "3.27.4"
+  RUST_TOOLCHAIN: "1.85.0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.client_payload.pr_number || github.event.inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+        with:
+          repository: AppFlowy-IO/AppFlowy-Premium
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ github.event.client_payload.pr_ref || github.event.inputs.pr_ref || 'main' }}
+
+      - name: Install Rust toolchain
+        id: rust_toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          override: true
+          profile: minimal
+
+      - name: Install flutter
+        id: flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install prerequisites
+        working-directory: frontend
+        run: |
+          cargo install --force --locked cargo-make
+          cargo install --force --locked duckscript_cli
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ubuntu-latest
+
+      - name: Install code-coverage tools
+        working-directory: frontend
+        run: |
+          sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
+          sudo apt-get update
+          sudo apt-get install keybinder-3.0
+          cargo install grcov
+          rustup component add llvm-tools-preview
+
+      - name: Run tests with coverage
+        working-directory: frontend
+        run: cargo make rust_unit_test_with_coverage
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./frontend/coverage/lcov.info
+          flags: rust
+          name: rust-coverage
+          fail_ci_if_error: false

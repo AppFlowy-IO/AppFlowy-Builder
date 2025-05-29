@@ -1,0 +1,428 @@
+name: Webhook Receiver for Private Repo
+
+on:
+  repository_dispatch:
+    types: [private-repo-webhook]
+  workflow_dispatch:
+    inputs:
+      event_type:
+        description: 'Event type (pr_opened, pr_sync, push)'
+        required: true
+        type: choice
+        options:
+          - pr_opened
+          - pr_sync
+          - push
+      pr_number:
+        description: 'PR number (for PR events)'
+        required: false
+        type: string
+      pr_ref:
+        description: 'Git ref/branch to test'
+        required: true
+        type: string
+      workflows:
+        description: 'Workflows to trigger (comma-separated: flutter,rust,mobile,ios,rust_coverage,docker,commit_lint)'
+        required: true
+        type: string
+        default: 'flutter,rust'
+
+concurrency:
+  group: webhook-${{ github.event.client_payload.pr_number || github.event.inputs.pr_number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse event data
+        id: parse
+        run: |
+          # Extract data from either repository_dispatch or workflow_dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "event_type=${{ github.event.client_payload.event_type }}" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.client_payload.pr_number }}" >> $GITHUB_OUTPUT
+            echo "pr_ref=${{ github.event.client_payload.pr_ref }}" >> $GITHUB_OUTPUT
+            echo "workflows=${{ github.event.client_payload.workflows }}" >> $GITHUB_OUTPUT
+          else
+            echo "event_type=${{ github.event.inputs.event_type }}" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "pr_ref=${{ github.event.inputs.pr_ref }}" >> $GITHUB_OUTPUT
+            echo "workflows=${{ github.event.inputs.workflows }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Display event information
+        run: |
+          echo "Event Type: ${{ steps.parse.outputs.event_type }}"
+          echo "PR Number: ${{ steps.parse.outputs.pr_number }}"
+          echo "Git Ref: ${{ steps.parse.outputs.pr_ref }}"
+          echo "Workflows: ${{ steps.parse.outputs.workflows }}"
+
+      - name: Trigger Flutter CI
+        if: contains(steps.parse.outputs.workflows, 'flutter')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+      - name: Trigger Rust CI
+        if: contains(steps.parse.outputs.workflows, 'rust')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+      - name: Trigger Mobile CI
+        if: contains(steps.parse.outputs.workflows, 'mobile')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+      - name: Trigger iOS CI
+        if: contains(steps.parse.outputs.workflows, 'ios')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+      - name: Trigger Rust Coverage
+        if: contains(steps.parse.outputs.workflows, 'rust_coverage')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+      - name: Trigger Docker CI
+        if: contains(steps.parse.outputs.workflows, 'docker')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+      - name: Trigger Commit Lint
+        if: contains(steps.parse.outputs.workflows, 'commit_lint')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: private-repo-pr
+          client-payload: |
+            {
+              "pr_number": "${{ steps.parse.outputs.pr_number }}",
+              "pr_ref": "${{ steps.parse.outputs.pr_ref }}",
+              "event_type": "${{ steps.parse.outputs.event_type }}"
+            }
+
+  create-pr-comment:
+    runs-on: ubuntu-latest
+    if: github.event.client_payload.pr_number || github.event.inputs.pr_number
+    steps:
+      - name: Parse event data
+        id: parse
+        run: |
+          # Extract data from either repository_dispatch or workflow_dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "pr_number=${{ github.event.client_payload.pr_number }}" >> $GITHUB_OUTPUT
+            echo "workflows=${{ github.event.client_payload.workflows }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=${{ github.event.inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "workflows=${{ github.event.inputs.workflows }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate workflow links
+        id: links
+        run: |
+          workflows="${{ steps.parse.outputs.workflows }}"
+          base_url="https://github.com/AppFlowy-IO/AppFlowy-Builder/actions/workflows"
+
+          # Generate workflow links based on requested workflows
+          flutter_link=""
+          rust_link=""
+          mobile_link=""
+          ios_link=""
+          rust_coverage_link=""
+          docker_link=""
+          commit_lint_link=""
+
+          if [[ "$workflows" == *"flutter"* ]]; then
+            flutter_link="- **Flutter CI/CD**: ${base_url}/flutter_ci_private.yaml"
+          fi
+
+          if [[ "$workflows" == *"rust"* ]]; then
+            rust_link="- **Rust Testing**: ${base_url}/rust_ci_private.yaml"
+          fi
+
+          if [[ "$workflows" == *"mobile"* ]]; then
+            mobile_link="- **Mobile CI (iOS/Android)**: ${base_url}/mobile_ci_private.yml"
+          fi
+
+          if [[ "$workflows" == *"ios"* ]]; then
+            ios_link="- **iOS CI**: ${base_url}/ios_ci_private.yaml"
+          fi
+
+          if [[ "$workflows" == *"rust_coverage"* ]]; then
+            rust_coverage_link="- **Rust Coverage**: ${base_url}/rust_coverage_private.yml"
+          fi
+
+          if [[ "$workflows" == *"docker"* ]]; then
+            docker_link="- **Docker CI**: ${base_url}/docker_ci_private.yml"
+          fi
+
+          if [[ "$workflows" == *"commit_lint"* ]]; then
+            commit_lint_link="- **Commit Lint**: ${base_url}/commit_lint_private.yml"
+          fi
+
+          # Store the links
+          echo "flutter_link=$flutter_link" >> $GITHUB_OUTPUT
+          echo "rust_link=$rust_link" >> $GITHUB_OUTPUT
+          echo "mobile_link=$mobile_link" >> $GITHUB_OUTPUT
+          echo "ios_link=$ios_link" >> $GITHUB_OUTPUT
+          echo "rust_coverage_link=$rust_coverage_link" >> $GITHUB_OUTPUT
+          echo "docker_link=$docker_link" >> $GITHUB_OUTPUT
+          echo "commit_lint_link=$commit_lint_link" >> $GITHUB_OUTPUT
+
+      - name: Post CI status comment to private repo PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          PR_NUMBER: ${{ steps.parse.outputs.pr_number }}
+        run: |
+          # Create the comment body
+          cat > comment_body.md << 'EOF'
+          ## 🚀 CI/CD Pipeline Status
+
+          Hi! Thanks for your contribution.
+
+          Your PR has triggered our CI/CD pipeline in the public repository. You can monitor the test results and build status here:
+
+          ### 📊 CI Dashboard
+          **Main CI Workflows**: https://github.com/AppFlowy-IO/AppFlowy-Builder/actions
+
+          ### 🔗 Running Workflows
+
+          ${{ steps.links.outputs.flutter_link }}
+          ${{ steps.links.outputs.rust_link }}
+          ${{ steps.links.outputs.mobile_link }}
+          ${{ steps.links.outputs.ios_link }}
+          ${{ steps.links.outputs.rust_coverage_link }}
+          ${{ steps.links.outputs.docker_link }}
+          ${{ steps.links.outputs.commit_lint_link }}
+
+          ---
+
+          ### 💡 How to Find Your Specific Run
+
+          1. Click on any of the workflow links above
+          2. Look for runs with **your PR title** or **commit hash**
+          3. The runs will be triggered by `repository_dispatch` events
+
+          ### ✅ What Gets Tested
+
+          - **Flutter**: Build verification, code analysis, and integration tests
+          - **Rust**: Unit tests, integration tests, and code coverage
+          - **Mobile**: iOS and Android build verification
+          - **Docker**: Container build and validation
+          - **Code Quality**: Commit message linting and formatting
+
+          ### 🔄 Re-running Failed Tests
+
+          If any tests fail and you push new commits, the CI will automatically re-trigger. You can also manually trigger workflows if needed.
+
+          ---
+
+          *CI powered by cross-repository GitHub Actions | Any questions? Feel free to ask!*
+          EOF
+
+          # Remove empty lines from workflow links
+          sed -i '/^$/d' comment_body.md
+
+          # Post the comment to the private repository PR
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/issues/$PR_NUMBER/comments \
+            -d "{\"body\": $(jq -Rs . < comment_body.md)}"
+
+          echo "✅ Posted CI status comment to private repo PR #$PR_NUMBER"
+
+  auto-approve-pr:
+    runs-on: ubuntu-latest
+    needs: [dispatch-workflows, create-pr-comment]
+    if: github.event.client_payload.pr_number || github.event.inputs.pr_number
+    steps:
+      - name: Parse event data
+        id: parse
+        run: |
+          # Extract data from either repository_dispatch or workflow_dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "pr_number=${{ github.event.client_payload.pr_number }}" >> $GITHUB_OUTPUT
+            echo "workflows=${{ github.event.client_payload.workflows }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=${{ github.event.inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "workflows=${{ github.event.inputs.workflows }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for CI workflows to complete
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOWS: ${{ steps.parse.outputs.workflows }}
+        run: |
+          echo "⏳ Waiting for CI workflows to complete..."
+
+          # Define workflow file names
+          declare -A workflow_files=(
+            ["flutter"]="flutter_ci_private.yaml"
+            ["rust"]="rust_ci_private.yaml"
+            ["mobile"]="mobile_ci_private.yml"
+            ["ios"]="ios_ci_private.yaml"
+            ["rust_coverage"]="rust_coverage_private.yml"
+            ["docker"]="docker_ci_private.yml"
+            ["commit_lint"]="commit_lint_private.yml"
+          )
+
+          # Get list of workflows to monitor
+          IFS=',' read -ra WORKFLOW_ARRAY <<< "$WORKFLOWS"
+
+          echo "Monitoring workflows: ${WORKFLOW_ARRAY[@]}"
+
+          # Wait for workflows to complete (max 60 minutes)
+          max_wait=3600
+          wait_interval=30
+          elapsed=0
+
+          while [ $elapsed -lt $max_wait ]; do
+            all_complete=true
+            all_success=true
+
+            for workflow in "${WORKFLOW_ARRAY[@]}"; do
+              workflow_file="${workflow_files[$workflow]}"
+              if [ -n "$workflow_file" ]; then
+                echo "Checking status of workflow: $workflow_file"
+
+                # Get the latest workflow run for this workflow
+                response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/AppFlowy-IO/AppFlowy-Builder/actions/workflows/$workflow_file/runs?per_page=1")
+
+                status=$(echo "$response" | jq -r '.workflow_runs[0].status // "unknown"')
+                conclusion=$(echo "$response" | jq -r '.workflow_runs[0].conclusion // "unknown"')
+
+                echo "  Status: $status, Conclusion: $conclusion"
+
+                if [ "$status" != "completed" ]; then
+                  all_complete=false
+                fi
+
+                if [ "$conclusion" != "success" ] && [ "$conclusion" != "unknown" ]; then
+                  all_success=false
+                fi
+              fi
+            done
+
+            if [ "$all_complete" = true ]; then
+              if [ "$all_success" = true ]; then
+                echo "✅ All workflows completed successfully!"
+                echo "all_workflows_passed=true" >> $GITHUB_ENV
+                break
+              else
+                echo "❌ Some workflows failed"
+                echo "all_workflows_passed=false" >> $GITHUB_ENV
+                break
+              fi
+            fi
+
+            echo "⏳ Workflows still running... waiting $wait_interval seconds"
+            sleep $wait_interval
+            elapsed=$((elapsed + wait_interval))
+          done
+
+          if [ $elapsed -ge $max_wait ]; then
+            echo "⏰ Timeout reached waiting for workflows"
+            echo "all_workflows_passed=false" >> $GITHUB_ENV
+          fi
+
+      - name: Auto-approve PR if all tests pass
+        if: env.all_workflows_passed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          PR_NUMBER: ${{ steps.parse.outputs.pr_number }}
+        run: |
+          echo "🎉 All CI tests passed! Auto-approving PR #$PR_NUMBER"
+
+          # Submit approval review
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/pulls/$PR_NUMBER/reviews \
+            -d '{
+              "event": "APPROVE",
+              "body": "🚀 **Auto-approved by CI**\n\nAll automated tests have passed successfully:\n\n✅ Build verification completed\n✅ All tests passing\n✅ Code quality checks passed\n\nThis PR is ready for merge!"
+            }'
+
+          # Post a comment about the auto-approval
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/issues/$PR_NUMBER/comments \
+            -d '{
+              "body": "## 🤖 Auto-Approval\n\n**Status**: ✅ **APPROVED**\n\nAll CI workflows have completed successfully. This PR has been automatically approved and is ready for merge.\n\n### Passed Workflows\n'"$(echo "${{ steps.parse.outputs.workflows }}" | sed 's/,/\n- /g' | sed 's/^/- /')"'\n\n*Automated approval by GitHub Actions*"
+            }'
+
+          echo "✅ PR #$PR_NUMBER has been auto-approved!"
+
+      - name: Report failed tests
+        if: env.all_workflows_passed == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          PR_NUMBER: ${{ steps.parse.outputs.pr_number }}
+        run: |
+          echo "❌ Some CI tests failed or timed out"
+
+          # Post a comment about the failed tests
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/issues/$PR_NUMBER/comments \
+            -d '{
+              "body": "## ❌ CI Tests Status\n\n**Status**: **FAILED** or **TIMEOUT**\n\nSome CI workflows have failed or did not complete within the expected time. Please check the workflow results and fix any issues before merging.\n\n### Check Results\nView detailed results at: https://github.com/AppFlowy-IO/AppFlowy-Builder/actions\n\n*Automated status update by GitHub Actions*"
+            }'
+
+          echo "ℹ️  Failure notification posted to PR #$PR_NUMBER"

@@ -1,0 +1,120 @@
+name: Mobile-CI-Private
+
+on:
+  repository_dispatch:
+    types: [private-repo-pr, private-repo-push]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number from private repo'
+        required: false
+        type: string
+      pr_ref:
+        description: 'Git ref to checkout from private repo'
+        required: false
+        type: string
+        default: 'main'
+      workflow_id:
+        description: "Codemagic workflow ID"
+        required: true
+        default: "ios-workflow"
+        type: choice
+        options:
+          - ios-workflow
+          - android-workflow
+
+env:
+  CODEMAGIC_API_TOKEN: ${{ secrets.CODEMAGIC_API_TOKEN }}
+  APP_ID: "6731d2f427e7c816080c3674"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.client_payload.pr_number || github.event.inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-mobile-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine branch to build
+        id: branch
+        run: |
+          # Use PR ref if available, otherwise use main
+          BRANCH="${{ github.event.client_payload.pr_ref || github.event.inputs.pr_ref || 'main' }}"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "Building branch: $BRANCH"
+
+      - name: Determine workflow ID
+        id: workflow
+        run: |
+          # Use input workflow_id if provided, otherwise default to ios-workflow
+          WORKFLOW_ID="${{ github.event.inputs.workflow_id || 'ios-workflow' }}"
+          echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+          echo "Using workflow: $WORKFLOW_ID"
+
+      - name: Trigger Codemagic Build
+        id: trigger_build
+        run: |
+          RESPONSE=$(curl -X POST \
+            --header "Content-Type: application/json" \
+            --header "x-auth-token: $CODEMAGIC_API_TOKEN" \
+            --data '{
+              "appId": "${{ env.APP_ID }}",
+              "workflowId": "${{ steps.workflow.outputs.workflow_id }}",
+              "branch": "${{ steps.branch.outputs.branch }}"
+            }' \
+            https://api.codemagic.io/builds)
+
+          BUILD_ID=$(echo $RESPONSE | jq -r '.buildId')
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "build_id=$BUILD_ID"
+
+      - name: Wait for build and check status
+        id: check_status
+        run: |
+          while true; do
+            curl -X GET \
+              --header "Content-Type: application/json" \
+              --header "x-auth-token: $CODEMAGIC_API_TOKEN" \
+              https://api.codemagic.io/builds/${{ steps.trigger_build.outputs.build_id }} > /tmp/response.json
+
+            RESPONSE_WITHOUT_COMMAND=$(cat /tmp/response.json | jq 'walk(if type == "object" and has("subactions") then .subactions |= map(del(.command)) else . end)')
+            STATUS=$(echo $RESPONSE_WITHOUT_COMMAND | jq -r '.build.status')
+
+            if [ "$STATUS" = "finished" ]; then
+              SUCCESS=$(echo $RESPONSE_WITHOUT_COMMAND | jq -r '.success')
+              BUILD_URL=$(echo $RESPONSE_WITHOUT_COMMAND | jq -r '.buildUrl')
+              echo "status=$STATUS" >> $GITHUB_OUTPUT
+              echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+              echo "build_url=$BUILD_URL" >> $GITHUB_OUTPUT
+              break
+            elif [ "$STATUS" = "failed" ]; then
+              echo "status=failed" >> $GITHUB_OUTPUT
+              break
+            fi
+
+            sleep 60
+          done
+
+      - name: Display Build Results
+        run: |
+          echo "Build Status: ${{ steps.check_status.outputs.status }}"
+          echo "Build Success: ${{ steps.check_status.outputs.success }}"
+          echo "Build URL: ${{ steps.check_status.outputs.build_url }}"
+          echo "Branch: ${{ steps.branch.outputs.branch }}"
+          echo "Workflow: ${{ steps.workflow.outputs.workflow_id }}"
+
+      # Optional: Add Slack notification if you have the webhook configured
+      # - name: Slack Notification
+      #   uses: 8398a7/action-slack@v3
+      #   if: always()
+      #   with:
+      #     status: ${{ steps.check_status.outputs.success == 'true' && 'success' || 'failure' }}
+      #     fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+      #     text: |
+      #       Mobile CI Build Result (Triggered from Private Repo)
+      #       Branch: ${{ steps.branch.outputs.branch }}
+      #       Workflow: ${{ steps.workflow.outputs.workflow_id }}
+      #       Build URL: ${{ steps.check_status.outputs.build_url }}
+      #       PR: ${{ github.event.client_payload.pr_number || github.event.inputs.pr_number || 'N/A' }}
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK }}
