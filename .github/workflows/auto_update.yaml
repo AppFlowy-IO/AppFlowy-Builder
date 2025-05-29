@@ -337,13 +337,17 @@ jobs:
           echo "Downloading $ASSETS_URL"
           curl -L -o app.exe $ASSETS_URL
 
-      - name: Generate EdSignature for Windows
-        working-directory: frontend/appflowy_flutter
+      - name: Build AppFlowy
+        working-directory: frontend
         run: |
           flutter config --enable-windows-desktop
           flutter pub get && flutter packages pub get
           dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . $VERSION
           cargo make --env APP_VERSION=$VERSION --profile production-windows-x86 appflowy
+
+      - name: Generate EdSignature for Windows
+        working-directory: frontend/appflowy_flutter
+        run: |
           $DECODED = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}"))
           echo $DECODED > PRIVATE_KEY
           dart run auto_updater:sign_update -f PRIVATE_KEY app.exe > edSignature.txt
