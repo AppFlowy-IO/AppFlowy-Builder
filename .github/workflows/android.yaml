@@ -14,11 +14,11 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.3"
+        default: "0.9.4"
       build_number:
         description: "Build Number (it should be unique)"
         required: true
-        default: "2909301"
+        default: "2909401"
       build_type:
         type: choice
         description: "Build Type"
@@ -65,6 +65,7 @@ jobs:
         with:
           repository: ${{ github.event.inputs.repo }}
           ref: ${{ github.event.inputs.branch }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:

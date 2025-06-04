@@ -35,8 +35,9 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v2
         with:
-          repository: AppFlowy-IO/AppFlowy
+          repository: AppFlowy-IO/AppFlowy-Premium
           ref: ${{ steps.parse_tag.outputs.branch_name }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Create release notes
         id: create_release_notes
@@ -72,8 +73,9 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
         with:
-          repository: AppFlowy-IO/AppFlowy
+          repository: AppFlowy-IO/AppFlowy-Premium
           ref: ${{ needs.prepare.outputs.branch_name }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -146,8 +148,9 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
         with:
-          repository: AppFlowy-IO/AppFlowy
+          repository: AppFlowy-IO/AppFlowy-Premium
           ref: ${{ needs.prepare.outputs.branch_name }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -246,8 +249,9 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
         with:
-          repository: AppFlowy-IO/AppFlowy
+          repository: AppFlowy-IO/AppFlowy-Premium
           ref: ${{ needs.prepare.outputs.branch_name }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
