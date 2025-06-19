@@ -102,6 +102,15 @@ jobs:
           vcpkg integrate install
           cargo install duckscript_cli --force --locked
 
+      - name: Configure Git credentials for Cargo
+        shell: bash
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+          git config --global url."https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+
       - name: Build Windows app
         working-directory: frontend
         # the cargo make script has to be run separately because of file locking issues
@@ -172,6 +181,11 @@ jobs:
         run: |
           cargo install cargo-make --force --locked --version 0.37.5
           cargo install duckscript_cli --force --locked
+
+      - name: Configure Git credentials for Cargo
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Build AppFlowy
         working-directory: frontend
@@ -281,6 +295,11 @@ jobs:
           cargo install cargo-make --force --locked --version 0.37.5
           cargo install duckscript_cli --force --locked
           rustup target add ${{ matrix.job.target }}
+
+      - name: Configure Git credentials for Cargo
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Install gcc-aarch64-linux-gnu
         if: ${{ matrix.job.target == 'aarch64-unknown-linux-gnu' }}

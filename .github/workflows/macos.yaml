@@ -87,6 +87,12 @@ jobs:
           echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
         shell: bash
 
+      - name: Configure Git credentials for Cargo
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+
+
       - name: Build AppFlowy
         working-directory: frontend
         run: |
@@ -195,6 +201,11 @@ jobs:
           echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
         shell: bash
 
+      - name: Configure Git credentials for Cargo
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+
       - name: Build AppFlowy
         working-directory: frontend
         run: |
@@ -294,6 +305,11 @@ jobs:
         run: |
           echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
         shell: bash
+
+      - name: Configure Git credentials for Cargo
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Build AppFlowy
         working-directory: frontend

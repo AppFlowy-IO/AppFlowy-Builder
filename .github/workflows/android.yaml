@@ -141,6 +141,11 @@ jobs:
           echo -e "storePassword=${{ secrets.ANDROID_UPLOAD_KEYSTORE_STORE_PASSWORD }}\nkeyPassword=${{ secrets.ANDROID_UPLOAD_KEYSTORE_KEY_PASSWORD }}\nkeyAlias=upload\nstoreFile=upload-keystore.jks" > key.properties
         shell: bash
 
+      - name: Configure Git credentials for Cargo
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+
       - name: Build AppFlowy
         working-directory: frontend
         env:

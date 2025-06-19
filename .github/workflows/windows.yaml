@@ -77,6 +77,16 @@ jobs:
           echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
         shell: bash
 
+      - name: Configure Git credentials for Cargo
+        shell: bash
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
+        run: |
+          git config --global credential.helper store
+          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+          git config --global url."https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+
+
       - name: Build Windows app
         working-directory: frontend
         # the cargo make script has to be run separately because of file locking issues
