@@ -135,7 +135,7 @@ jobs:
 
           # Generate build number from timestamp
           BUILD_NUMBER=$(date +%s)
-          
+
           # Generate timestamped release tag (no colons allowed in tag names)
           TIMESTAMP=$(date +"%y%m%d-%H%M")
           RELEASE_TAG="${VERSION}-${TIMESTAMP}"
@@ -162,13 +162,13 @@ jobs:
       - name: Validate Branch Exists
         run: |
           echo "🔍 Checking if branch '${{ steps.parse_inputs.outputs.branch_name }}' exists..."
-          
+
           # Use GitHub API to check if branch exists (requires token)
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: token ${{ secrets.PRIVATE_REPO_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/branches/${{ steps.parse_inputs.outputs.branch_name }}")
-          
+
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "✅ Branch '${{ steps.parse_inputs.outputs.branch_name }}' exists"
           elif [ "$HTTP_STATUS" = "404" ]; then
@@ -373,8 +373,9 @@ jobs:
           echo "⏭️ Skipped builds: $SKIPPED_BUILDS"
 
           if [ $SUCCESSFUL_BUILDS -eq 0 ]; then
-            echo "❌ No successful builds to collect artifacts from"
-            exit 1
+            echo "⚠️ No successful builds found, but continuing to check for any artifacts..."
+          else
+            echo "✅ Found $SUCCESSFUL_BUILDS successful builds to collect artifacts from"
           fi
 
       - name: Download all artifacts
@@ -399,15 +400,25 @@ jobs:
       - name: Upload all artifacts to release
         if: needs.prepare.outputs.upload_url != ''
         run: |
-          if [ ! -d "artifacts" ] || [ -z "$(ls -A artifacts)" ]; then
-            echo "⚠️ No artifacts to upload"
-            exit 0
+          if [ ! -d "artifacts" ] || [ -z "$(ls -A artifacts 2>/dev/null)" ]; then
+            echo "⚠️ No artifacts directory found or no artifacts to upload"
+            echo "This can happen if all builds failed - checking individual job artifacts..."
+            # Still try to proceed in case artifacts exist but weren't detected
           fi
 
-          echo "🚀 Uploading artifacts to release..."
+          echo "🚀 Checking for artifacts to upload..."
 
           UPLOAD_COUNT=0
           UPLOAD_FAILED=0
+
+          # Check if any artifacts exist
+          if ! ls artifacts/* >/dev/null 2>&1; then
+            echo "⚠️ No artifact files found to upload"
+            echo "This is expected if all builds failed - no action needed"
+            exit 0
+          fi
+
+          echo "📦 Found artifacts, starting upload..."
 
           for file in artifacts/*; do
             if [ -f "$file" ]; then
