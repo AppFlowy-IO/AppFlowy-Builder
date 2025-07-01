@@ -204,7 +204,7 @@ jobs:
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
 
   aarch64:
-    runs-on: macos-14
+    runs-on: macos-latest
 
     if: ${{ inputs.arch == 'All' || inputs.arch == 'aarch64' }}
 
@@ -347,7 +347,7 @@ jobs:
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
 
   universal:
-    runs-on: macos-14
+    runs-on: macos-latest
 
     if: ${{ inputs.arch == 'All' || inputs.arch == 'universal' }}
 
