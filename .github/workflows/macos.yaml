@@ -32,6 +32,28 @@ on:
         options:
           - "0"
           - "1"
+  workflow_call:
+    inputs:
+      repo:
+        description: "Repo"
+        required: true
+        type: string
+      branch:
+        description: "Branch"
+        required: true
+        type: string
+      build_name:
+        description: "Build Version"
+        required: true
+        type: string
+      arch:
+        description: "Build Architecture"
+        required: true
+        type: string
+      internal_build:
+        description: "Internal Build Type"
+        required: true
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -41,19 +63,19 @@ jobs:
   x86_64:
     runs-on: macos-13
 
-    if: ${{ github.event.inputs.arch == 'All' || github.event.inputs.arch == 'x86_64' }}
+    if: ${{ inputs.arch == 'All' || inputs.arch == 'x86_64' }}
 
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.event.inputs.build_name }}/macos/Release
-      MACOS_X86_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-macos-x86_64.zip
-      MACOS_DMG_NAME: AppFlowy-${{ github.event.inputs.build_name }}-macos-x86_64
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
+      MACOS_X86_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64.zip
+      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
@@ -72,6 +94,12 @@ jobs:
           components: rustfmt
           profile: minimal
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-x86_64
+          workspaces: |
+            frontend/rust-lib
+
       - uses: davidB/rust-cargo-make@v1
         with:
           version: "0.37.5"
@@ -80,11 +108,13 @@ jobs:
         working-directory: frontend
         run: |
           cargo install duckscript_cli --force --locked
+          cargo make appflowy-flutter-deps-tools
 
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
+          echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
         shell: bash
 
       - name: Configure Git credentials for Cargo
@@ -93,21 +123,42 @@ jobs:
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
 
-      - name: Build AppFlowy
+      - name: Build AppFlowy (x86_64)
         working-directory: frontend
         run: |
+          echo "🔧 Building AppFlowy for x86_64 (Intel)"
+          echo "Architecture: $(uname -m)"
+          echo "Rust targets: $(rustup target list --installed)"
+          
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          
+          echo "✅ x86_64 build completed"
+          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
       - name: Codesign AppFlowy
         run: |
+          if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then
+            echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
+            exit 0
+          fi
+          
+          echo "✍️ Code signing AppFlowy app..."
           echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
+          
+          # Verify the app exists before signing
+          if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
+            echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+            exit 1
+          fi
+          
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+          echo "✅ Code signing completed"
 
       - name: Create macOS dmg
         run: |
@@ -155,19 +206,19 @@ jobs:
   aarch64:
     runs-on: macos-14
 
-    if: ${{ github.event.inputs.arch == 'All' || github.event.inputs.arch == 'aarch64' }}
+    if: ${{ inputs.arch == 'All' || inputs.arch == 'aarch64' }}
 
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.event.inputs.build_name }}/macos/Release
-      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-macos-aarch64.zip
-      MACOS_DMG_NAME: AppFlowy-${{ github.event.inputs.build_name }}-macos-aarch64
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
+      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-aarch64.zip
+      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-aarch64
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
@@ -186,6 +237,12 @@ jobs:
           components: rustfmt
           profile: minimal
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-aarch64
+          workspaces: |
+            frontend/rust-lib
+
       - uses: davidB/rust-cargo-make@v1
         with:
           version: "0.37.5"
@@ -194,11 +251,13 @@ jobs:
         working-directory: frontend
         run: |
           cargo install duckscript_cli --force --locked
+          cargo make appflowy-flutter-deps-tools
 
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
+          echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
         shell: bash
 
       - name: Configure Git credentials for Cargo
@@ -206,36 +265,64 @@ jobs:
           git config --global credential.helper store
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Build AppFlowy
+      - name: Build AppFlowy (aarch64)
         working-directory: frontend
         run: |
+          echo "🔧 Building AppFlowy for aarch64 (ARM64)"
+          echo "Architecture: $(uname -m)"
+          echo "Rust targets: $(rustup target list --installed)"
+          
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ github.event.inputs.build_name }}
+          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          
+          echo "✅ aarch64 build completed"
+          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
       - name: Codesign AppFlowy
         run: |
+          if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then
+            echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
+            exit 0
+          fi
+          
+          echo "✍️ Code signing AppFlowy app..."
           echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
+          
+          # Verify the app exists before signing
+          if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
+            echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+            exit 1
+          fi
+          
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+          echo "✅ Code signing completed"
 
       - name: Create macOS dmg
-        continue-on-error: true
         run: |
           brew install create-dmg
-          create-dmg \
-          --volname ${{ env.MACOS_DMG_NAME }} \
-          --hide-extension "AppFlowy.app" \
-          --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
-          --window-size 600 450 \
-          --icon-size 94 \
-          --icon "AppFlowy.app" 141 249 \
-          --app-drop-link 458 249 \
-          "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
-          "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+          i=0
+          until [[ -e "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" ]]; do
+            create-dmg \
+            --volname ${{ env.MACOS_DMG_NAME }} \
+            --hide-extension "AppFlowy.app" \
+            --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
+            --window-size 600 450 \
+            --icon-size 94 \
+            --icon "AppFlowy.app" 141 249 \
+            --app-drop-link 458 249 \
+            "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
+            "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" || true
+            if [[ $i -eq 10 ]]; then
+              echo 'Error: create-dmg did not succeed even after 10 tries.'
+              exit 1
+            fi
+            i=$((i+1))
+          done
 
       - name: Notarize AppFlowy
         continue-on-error: true
@@ -262,19 +349,19 @@ jobs:
   universal:
     runs-on: macos-14
 
-    if: ${{ github.event.inputs.arch == 'All' || github.event.inputs.arch == 'universal' }}
+    if: ${{ inputs.arch == 'All' || inputs.arch == 'universal' }}
 
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ github.event.inputs.build_name }}/macos/Release
-      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-macos-universal.zip
-      MACOS_DMG_NAME: AppFlowy-${{ github.event.inputs.build_name }}-macos-universal
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
+      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal.zip
+      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
@@ -285,11 +372,23 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-          targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          override: true
           components: rustfmt
+          profile: minimal
+
+      - name: Install Rust targets
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-universal
+          workspaces: |
+            frontend/rust-lib
 
       - uses: davidB/rust-cargo-make@v1
         with:
@@ -299,11 +398,13 @@ jobs:
         working-directory: frontend
         run: |
           cargo install duckscript_cli --force --locked
+          cargo make appflowy-flutter-deps-tools
 
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
+          echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
         shell: bash
 
       - name: Configure Git credentials for Cargo
@@ -311,35 +412,70 @@ jobs:
           git config --global credential.helper store
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Build AppFlowy
+      - name: Build AppFlowy (Universal)
         working-directory: frontend
         run: |
+          echo "🔧 Building AppFlowy Universal Binary (x86_64 + ARM64)"
+          echo "Architecture: $(uname -m)"
+          echo "Rust targets: $(rustup target list --installed)"
+          
           flutter config --enable-macos-desktop
-          sh scripts/flutter_release_build/build_universal_package_for_macos.sh ${{ github.event.inputs.build_name }}
+          
+          # Ensure the script is executable
+          chmod +x scripts/flutter_release_build/build_universal_package_for_macos.sh
+          
+          # Run the universal build script with verbose output
+          echo "📦 Starting universal build..."
+          sh scripts/flutter_release_build/build_universal_package_for_macos.sh ${{ inputs.build_name }}
+          
+          echo "✅ Universal build completed"
+          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
       - name: Codesign AppFlowy
         run: |
+          if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then
+            echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
+            exit 0
+          fi
+          
+          echo "✍️ Code signing AppFlowy app..."
           echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
+          
+          # Verify the app exists before signing
+          if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
+            echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+            exit 1
+          fi
+          
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+          echo "✅ Code signing completed"
 
       - name: Create macOS dmg
         run: |
           brew install create-dmg
-          create-dmg \
-          --volname ${{ env.MACOS_DMG_NAME }} \
-          --hide-extension "AppFlowy.app" \
-          --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
-          --window-size 600 450 \
-          --icon-size 94 \
-          --icon "AppFlowy.app" 141 249 \
-          --app-drop-link 458 249 \
-          "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
-          "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
+          i=0
+          until [[ -e "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" ]]; do
+            create-dmg \
+            --volname ${{ env.MACOS_DMG_NAME }} \
+            --hide-extension "AppFlowy.app" \
+            --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
+            --window-size 600 450 \
+            --icon-size 94 \
+            --icon "AppFlowy.app" 141 249 \
+            --app-drop-link 458 249 \
+            "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
+            "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" || true
+            if [[ $i -eq 10 ]]; then
+              echo 'Error: create-dmg did not succeed even after 10 tries.'
+              exit 1
+            fi
+            i=$((i+1))
+          done
 
       - name: Check for Secret availability
         id: secret-check
@@ -379,8 +515,8 @@ jobs:
 
   notify-failure:
     runs-on: ubuntu-latest
-    needs: universal
-    if: failure()
+    needs: [x86_64, aarch64, universal]
+    if: always() && (needs.x86_64.result == 'failure' || needs.aarch64.result == 'failure' || needs.universal.result == 'failure')
     steps:
       - uses: 8398a7/action-slack@v3
         with:

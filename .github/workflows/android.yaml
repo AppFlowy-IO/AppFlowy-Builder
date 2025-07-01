@@ -34,6 +34,32 @@ on:
         options:
           - "0"
           - "1"
+  workflow_call:
+    inputs:
+      repo:
+        description: "Repo"
+        required: true
+        type: string
+      branch:
+        description: "Branch"
+        required: true
+        type: string
+      build_name:
+        description: "Build Version"
+        required: true
+        type: string
+      build_number:
+        description: "Build Number"
+        required: true
+        type: string
+      build_type:
+        description: "Build Type"
+        required: true
+        type: string
+      internal_build:
+        description: "Internal Build Type"
+        required: true
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -63,8 +89,8 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v2
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - uses: actions/setup-java@v4
@@ -124,7 +150,7 @@ jobs:
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
           echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
         shell: bash
 
@@ -155,10 +181,10 @@ jobs:
           cargo make --profile production-android code_generation
 
           cd appflowy_flutter
-          if [ ${{github.event.inputs.build_type}} = "apk" ]; then
-            flutter build apk --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
-          elif [ ${{github.event.inputs.build_type}} = "appbundle" ]; then
-            flutter build appbundle --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          if [ ${{ inputs.build_type }} = "apk" ]; then
+            flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          elif [ ${{ inputs.build_type }} = "appbundle" ]; then
+            flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           fi
 
       - name: Compress debug symbols
@@ -167,35 +193,35 @@ jobs:
           tar -czf debug-symbols.tar.gz debug_info
 
       - name: Rename APK
-        if: github.event.inputs.build_type == 'apk'
+        if: inputs.build_type == 'apk'
         run: |
-          mv frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-release.apk frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ github.event.inputs.build_name }}-android.apk
+          mv frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-release.apk frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ inputs.build_name }}-android.apk
         shell: bash
 
       - name: Upload APK
-        if: github.event.inputs.build_type == 'apk'
+        if: inputs.build_type == 'apk'
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy-${{ github.event.inputs.build_name }}-android.apk
-          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ github.event.inputs.build_name }}-android.apk
+          name: AppFlowy-${{ inputs.build_name }}-android.apk
+          path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ inputs.build_name }}-android.apk
 
       - name: Rename AAB
-        if: github.event.inputs.build_type == 'appbundle'
+        if: inputs.build_type == 'appbundle'
         run: |
-          mv frontend/appflowy_flutter/build/app/outputs/bundle/release/app-release.aab frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ github.event.inputs.build_name }}.aab
+          mv frontend/appflowy_flutter/build/app/outputs/bundle/release/app-release.aab frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ inputs.build_name }}.aab
         shell: bash
 
       - name: Upload AAB
-        if: github.event.inputs.build_type  == 'appbundle'
+        if: inputs.build_type == 'appbundle'
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy-${{ github.event.inputs.build_name }}.aab
-          path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ github.event.inputs.build_name }}.aab
+          name: AppFlowy-${{ inputs.build_name }}.aab
+          path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ inputs.build_name }}.aab
 
       - name: Upload debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy-${{ github.event.inputs.build_name }}-debug-symbols
+          name: AppFlowy-${{ inputs.build_name }}-android-debug-symbols
           path: frontend/appflowy_flutter/debug-symbols.tar.gz
 
       - name: Setup Sentry CLI

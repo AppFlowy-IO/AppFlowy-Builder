@@ -28,6 +28,28 @@ on:
           - "0"
           - "1"
           - "2"
+  workflow_call:
+    inputs:
+      repo:
+        description: "Repo"
+        required: true
+        type: string
+      branch:
+        description: "Branch"
+        required: true
+        type: string
+      build_name:
+        description: "Build Version"
+        required: true
+        type: string
+      build_number:
+        description: "Build Number"
+        required: true
+        type: string
+      internal_build:
+        description: "Internal Build Type"
+        required: true
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -47,8 +69,8 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v2
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - uses: maxim-lobanov/setup-xcode@v1
@@ -117,7 +139,7 @@ jobs:
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
           echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}" >> .env
         shell: bash
 
@@ -135,18 +157,18 @@ jobs:
           cargo make --profile production-ios-arm64 code_generation
 
           cd appflowy_flutter
-          flutter build ipa --build-name ${{ github.event.inputs.build_name }} --build-number ${{ github.event.inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          flutter build ipa --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
 
       - name: Upload ipa
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy.xcarchive
+          name: AppFlowy-${{ inputs.build_name }}.xcarchive
           path: frontend/appflowy_flutter/build/ios/archive/Runner.xcarchive
 
       - name: Upload debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: debug-symbols
+          name: AppFlowy-${{ inputs.build_name }}-ios-debug-symbols
           path: frontend/appflowy_flutter/debug_info
 
       - name: Setup Sentry CLI

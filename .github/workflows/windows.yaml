@@ -23,6 +23,24 @@ on:
         options:
           - "0"
           - "1"
+  workflow_call:
+    inputs:
+      repo:
+        description: "Repo"
+        required: true
+        type: string
+      branch:
+        description: "Branch"
+        required: true
+        type: string
+      build_name:
+        description: "Build Version"
+        required: true
+        type: string
+      internal_build:
+        description: "Internal Build Type"
+        required: true
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -31,9 +49,9 @@ env:
 jobs:
   build:
     env:
-      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ github.event.inputs.build_name }}\windows
-      WINDOWS_ZIP_NAME: AppFlowy-${{ github.event.inputs.build_name }}-windows-x86_64.zip
-      WINDOWS_INSTALLER_NAME: AppFlowy-${{ github.event.inputs.build_name }}-windows-x86_64
+      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ inputs.build_name }}\windows
+      WINDOWS_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-windows-x86_64.zip
+      WINDOWS_INSTALLER_NAME: AppFlowy-${{ inputs.build_name }}-windows-x86_64
 
     runs-on: windows-latest
 
@@ -41,8 +59,8 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v3
         with:
-          repository: ${{ github.event.inputs.repo }}
-          ref: ${{ github.event.inputs.branch }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
       - name: Install flutter
@@ -74,7 +92,7 @@ jobs:
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
         shell: bash
 
       - name: Configure Git credentials for Cargo
@@ -92,9 +110,9 @@ jobs:
         # the cargo make script has to be run separately because of file locking issues
         run: |
           flutter config --enable-windows-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ github.event.inputs.build_name }}
-          cargo make --env APP_VERSION=${{ github.event.inputs.build_name }} --profile production-windows-x86 appflowy
-          dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ github.event.inputs.build_name }}
+          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
+          cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
+          dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
 
       - name: Archive Asset
         uses: vimtor/action-zip@v1
@@ -110,7 +128,7 @@ jobs:
       - name: Build installer executable
         working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
         run: |
-          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ github.event.inputs.build_name }}
+          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ inputs.build_name }}
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4

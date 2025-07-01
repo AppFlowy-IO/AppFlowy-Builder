@@ -1,6 +1,66 @@
 name: Build AppFlowy Application
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., 0.9.4)"
+        required: true
+        type: string
+      branch:
+        description: "Source branch for build"
+        required: true
+        default: "main"
+        type: string
+      platforms:
+        description: "Platforms to build for"
+        required: true
+        type: choice
+        options:
+          - "all"
+          - "android"
+          - "ios"
+          - "macos"
+          - "windows"
+          - "linux"
+          - "mobile" # android + ios
+          - "desktop" # macos + windows + linux
+      android_build_type:
+        description: "Android build type"
+        required: false
+        type: choice
+        default: "both"
+        options:
+          - "both"
+          - "apk"
+          - "appbundle"
+      macos_arch:
+        description: "macOS architecture"
+        required: false
+        type: choice
+        default: "All"
+        options:
+          - "All"
+          - "x86_64"
+          - "aarch64"
+          - "universal"
+      internal_build:
+        description: "Internal build (1 for internal, 0 for external)"
+        required: false
+        type: choice
+        default: "1"
+        options:
+          - "0"
+          - "1"
+      upload_to_store:
+        description: "Upload to app stores (not implemented yet)"
+        required: false
+        type: boolean
+        default: false
+      release_notes:
+        description: "Custom release notes (optional)"
+        required: false
+        type: string
   push:
     tags:
       - "*"
@@ -13,37 +73,171 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.parse_tag.outputs.version }}
-      branch_name: ${{ steps.parse_tag.outputs.branch_name }}
+      version: ${{ steps.parse_inputs.outputs.version }}
+      release_tag: ${{ steps.parse_inputs.outputs.release_tag }}
+      branch_name: ${{ steps.parse_inputs.outputs.branch_name }}
+      build_number: ${{ steps.parse_inputs.outputs.build_number }}
+      platforms: ${{ steps.parse_inputs.outputs.platforms }}
+      android_build_type: ${{ steps.parse_inputs.outputs.android_build_type }}
+      macos_arch: ${{ steps.parse_inputs.outputs.macos_arch }}
+      internal_build: ${{ steps.parse_inputs.outputs.internal_build }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - name: Parse Tag
-        id: parse_tag
+      - name: Parse Inputs
+        id: parse_inputs
         run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
-          BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
-          if [ -z "$BRANCH_NAME" ]; then
-            echo "Error: BRANCH_NAME is empty. The tag name should be in the format of <version>_<branch_name>"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual trigger
+            VERSION="${{ github.event.inputs.version }}"
+            BRANCH_NAME="${{ github.event.inputs.branch }}"
+            PLATFORMS="${{ github.event.inputs.platforms }}"
+            ANDROID_BUILD_TYPE="${{ github.event.inputs.android_build_type }}"
+            MACOS_ARCH="${{ github.event.inputs.macos_arch }}"
+            INTERNAL_BUILD="${{ github.event.inputs.internal_build }}"
+          else
+            # Tag trigger
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            VERSION=$(echo "$TAG_NAME" | cut -f1 -d"_")
+            BRANCH_NAME=$(echo "$TAG_NAME" | cut -f2- -d"_")
+            PLATFORMS="all"
+            ANDROID_BUILD_TYPE="both"
+            MACOS_ARCH="All"
+            INTERNAL_BUILD="1"
+            if [ -z "$BRANCH_NAME" ]; then
+              echo "Error: BRANCH_NAME is empty. The tag name should be in the format of <version>_<branch_name>"
+              exit 1
+            fi
+          fi
+
+          # Input validation
+          if [ -z "$VERSION" ]; then
+            echo "❌ Error: Version cannot be empty"
             exit 1
           fi
-          echo $VERSION
-          echo $BRANCH_NAME
-          echo "::set-output name=version::$VERSION"
-          echo "::set-output name=branch_name::$BRANCH_NAME"
+
+          if [ -z "$BRANCH_NAME" ]; then
+            echo "❌ Error: Branch name cannot be empty"
+            exit 1
+          fi
+
+          # Validate version format (semantic versioning)
+          if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9]+)*$ ]]; then
+            echo "❌ Error: Version must follow semantic versioning format (e.g., 1.0.0, 1.0.0-beta.1)"
+            exit 1
+          fi
+
+          # Validate platforms
+          VALID_PLATFORMS=("all" "android" "ios" "macos" "windows" "linux" "mobile" "desktop")
+          if [[ ! " ${VALID_PLATFORMS[@]} " =~ " ${PLATFORMS} " ]]; then
+            echo "❌ Error: Invalid platform '$PLATFORMS'. Valid options: ${VALID_PLATFORMS[*]}"
+            exit 1
+          fi
+
+          # Generate build number from timestamp
+          BUILD_NUMBER=$(date +%s)
+          
+          # Generate timestamped release tag (no colons allowed in tag names)
+          TIMESTAMP=$(date +"%y%m%d-%H%M")
+          RELEASE_TAG="${VERSION}-${TIMESTAMP}"
+
+          echo "✅ Validation passed!"
+          echo "📦 Version: $VERSION"
+          echo "🏷️ Release Tag: $RELEASE_TAG"
+          echo "🌿 Branch: $BRANCH_NAME"
+          echo "🚀 Platforms: $PLATFORMS"
+          echo "🔢 Build Number: $BUILD_NUMBER"
+          echo "📱 Android Build Type: $ANDROID_BUILD_TYPE"
+          echo "💻 macOS Architecture: $MACOS_ARCH"
+          echo "🏗️ Internal Build: $INTERNAL_BUILD"
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+          echo "android_build_type=$ANDROID_BUILD_TYPE" >> $GITHUB_OUTPUT
+          echo "macos_arch=$MACOS_ARCH" >> $GITHUB_OUTPUT
+          echo "internal_build=$INTERNAL_BUILD" >> $GITHUB_OUTPUT
+
+      - name: Validate Branch Exists
+        run: |
+          echo "🔍 Checking if branch '${{ steps.parse_inputs.outputs.branch_name }}' exists..."
+          
+          # Use GitHub API to check if branch exists (requires token)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.PRIVATE_REPO_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/branches/${{ steps.parse_inputs.outputs.branch_name }}")
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Branch '${{ steps.parse_inputs.outputs.branch_name }}' exists"
+          elif [ "$HTTP_STATUS" = "404" ]; then
+            echo "❌ Error: Branch '${{ steps.parse_inputs.outputs.branch_name }}' does not exist in AppFlowy-Premium repository"
+            exit 1
+          else
+            echo "⚠️ Warning: Could not verify branch existence (HTTP $HTTP_STATUS). Proceeding anyway..."
+            echo "This will be validated during checkout."
+          fi
+
+      - name: Check Required Secrets
+        run: |
+          echo "🔐 Checking required secrets availability..."
+
+          MISSING_SECRETS=()
+
+          # Check for basic secrets
+          if [ -z "${{ secrets.PRIVATE_REPO_TOKEN }}" ]; then
+            MISSING_SECRETS+=("PRIVATE_REPO_TOKEN")
+          fi
+
+          if [ -z "${{ secrets.ADMIN_GITHUB_TOKEN }}" ]; then
+            MISSING_SECRETS+=("ADMIN_GITHUB_TOKEN")
+          fi
+
+          # Check platform-specific secrets if needed
+          if [[ "${{ steps.parse_inputs.outputs.platforms }}" == *"android"* ]] || [[ "${{ steps.parse_inputs.outputs.platforms }}" == "all" ]] || [[ "${{ steps.parse_inputs.outputs.platforms }}" == "mobile" ]]; then
+            if [ -z "${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}" ]; then
+              MISSING_SECRETS+=("ANDROID_UPLOAD_KEYSTORE_BASE64")
+            fi
+          fi
+
+          if [[ "${{ steps.parse_inputs.outputs.platforms }}" == *"ios"* ]] || [[ "${{ steps.parse_inputs.outputs.platforms }}" == "all" ]] || [[ "${{ steps.parse_inputs.outputs.platforms }}" == "mobile" ]]; then
+            if [ -z "${{ secrets.IOS_CERTIFICATE_BASE64 }}" ]; then
+              MISSING_SECRETS+=("IOS_CERTIFICATE_BASE64")
+            fi
+          fi
+
+          if [[ "${{ steps.parse_inputs.outputs.platforms }}" == *"macos"* ]] || [[ "${{ steps.parse_inputs.outputs.platforms }}" == "all" ]] || [[ "${{ steps.parse_inputs.outputs.platforms }}" == "desktop" ]]; then
+            if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then
+              echo "⚠️ Warning: MACOS_CERTIFICATE_BASE64 not set. macOS builds will not be code signed."
+            fi
+          fi
+
+          if [ ${#MISSING_SECRETS[@]} -ne 0 ]; then
+            echo "❌ Error: Missing required secrets: ${MISSING_SECRETS[*]}"
+            echo "Please configure these secrets in the repository settings."
+            exit 1
+          fi
+
+          echo "✅ All required secrets are available"
 
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: AppFlowy-IO/AppFlowy-Premium
-          ref: ${{ steps.parse_tag.outputs.branch_name }}
+          ref: ${{ steps.parse_inputs.outputs.branch_name }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          fetch-depth: 0
 
       - name: Create release notes
         id: create_release_notes
         run: |
-          RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_tag.outputs.version }}/"'!d;')
-          echo "::set-output name=release_notes::$RELEASE_NOTES"
+          if [[ "${{ github.event.inputs.release_notes }}" != "" ]]; then
+            RELEASE_NOTES="${{ github.event.inputs.release_notes }}"
+          else
+            RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_inputs.outputs.version }}/"'!d;' || echo "Release ${{ steps.parse_inputs.outputs.version }}")
+          fi
+          echo "release_notes=$RELEASE_NOTES" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Create release
@@ -52,325 +246,236 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ steps.parse_tag.outputs.version }}
+          tag_name: ${{ steps.parse_inputs.outputs.release_tag }}
+          release_name: ${{ steps.parse_inputs.outputs.release_tag }}
           body: ${{ steps.create_release_notes.outputs.release_notes }}
 
-  build-for-windows:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
+  build-android-apk:
+    name: Build Android APK
     needs: prepare
-    runs-on: ${{ matrix.job.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        job:
-          - { target: x86_64-pc-windows-msvc, os: windows-latest }
-    env:
-      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ needs.prepare.outputs.version }}\windows
-      WINDOWS_INSTALLER_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-windows-x86_64
+    if: (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'android') || contains(needs.prepare.outputs.platforms, 'mobile')) && (needs.prepare.outputs.android_build_type == 'apk' || needs.prepare.outputs.android_build_type == 'both')
+    uses: ./.github/workflows/android.yaml
+    with:
+      repo: AppFlowy-IO/AppFlowy-Premium
+      branch: ${{ needs.prepare.outputs.branch_name }}
+      build_name: ${{ needs.prepare.outputs.version }}
+      build_number: ${{ needs.prepare.outputs.build_number }}
+      build_type: apk
+      internal_build: ${{ needs.prepare.outputs.internal_build }}
+    secrets: inherit
 
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-        with:
-          repository: AppFlowy-IO/AppFlowy-Premium
-          ref: ${{ needs.prepare.outputs.branch_name }}
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.job.target }}
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - uses: davidB/rust-cargo-make@v1
-        with:
-          version: "0.37.5"
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          vcpkg integrate install
-          cargo install duckscript_cli --force --locked
-
-      - name: Configure Git credentials for Cargo
-        shell: bash
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: true
-        run: |
-          git config --global credential.helper store
-          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
-          git config --global url."https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
-
-      - name: Build Windows app
-        working-directory: frontend
-        # the cargo make script has to be run separately because of file locking issues
-        run: |
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ needs.prepare.outputs.version }}
-          cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-windows-x86 appflowy
-          dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ needs.prepare.outputs.version }}
-
-      - name: Copy installer config & icon file
-        working-directory: frontend
-        run: |
-          cp scripts/windows_installer/* ../${{ env.WINDOWS_APP_RELEASE_PATH }}
-
-      - name: Build installer executable
-        working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
-        run: |
-          iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ needs.prepare.outputs.version }}
-
-      - name: Upload Installer Asset
-        id: upload-installer-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.prepare.outputs.upload_url }}
-          asset_path: ${{ env.WINDOWS_APP_RELEASE_PATH }}\Output\${{ env.WINDOWS_INSTALLER_NAME }}.exe
-          asset_name: ${{ env.WINDOWS_INSTALLER_NAME }}.exe
-          asset_content_type: application/octet-stream
-
-  build-for-macOS:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
-    runs-on: ${{ matrix.job.os }}
+  build-android-aab:
+    name: Build Android AAB
     needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        job:
-          - { target: aarch64-apple-darwin, os: macos-14 }
-    env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/macos/Release
-      MACOS_DMG_NAME: AppFlowy_${{ github.ref_name }}_macos-universal
-      MACOS_CODESIGN_ID: ${{ secrets.MACOS_CODESIGN_ID }}
+    if: (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'android') || contains(needs.prepare.outputs.platforms, 'mobile')) && (needs.prepare.outputs.android_build_type == 'appbundle' || needs.prepare.outputs.android_build_type == 'both')
+    uses: ./.github/workflows/android.yaml
+    with:
+      repo: AppFlowy-IO/AppFlowy-Premium
+      branch: ${{ needs.prepare.outputs.branch_name }}
+      build_name: ${{ needs.prepare.outputs.version }}
+      build_number: ${{ needs.prepare.outputs.build_number }}
+      build_type: appbundle
+      internal_build: ${{ needs.prepare.outputs.internal_build }}
+    secrets: inherit
+
+  build-ios:
+    name: Build iOS
+    needs: prepare
+    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'ios') || contains(needs.prepare.outputs.platforms, 'mobile')
+    uses: ./.github/workflows/ios.yaml
+    with:
+      repo: AppFlowy-IO/AppFlowy-Premium
+      branch: ${{ needs.prepare.outputs.branch_name }}
+      build_name: ${{ needs.prepare.outputs.version }}
+      build_number: ${{ needs.prepare.outputs.build_number }}
+      internal_build: ${{ needs.prepare.outputs.internal_build }}
+    secrets: inherit
+
+  build-macos:
+    name: Build macOS
+    needs: prepare
+    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'macos') || contains(needs.prepare.outputs.platforms, 'desktop')
+    uses: ./.github/workflows/macos.yaml
+    with:
+      repo: AppFlowy-IO/AppFlowy-Premium
+      branch: ${{ needs.prepare.outputs.branch_name }}
+      build_name: ${{ needs.prepare.outputs.version }}
+      arch: ${{ needs.prepare.outputs.macos_arch }}
+      internal_build: ${{ needs.prepare.outputs.internal_build }}
+    secrets: inherit
+
+  build-windows:
+    name: Build Windows
+    needs: prepare
+    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'windows') || contains(needs.prepare.outputs.platforms, 'desktop')
+    uses: ./.github/workflows/windows.yaml
+    with:
+      repo: AppFlowy-IO/AppFlowy-Premium
+      branch: ${{ needs.prepare.outputs.branch_name }}
+      build_name: ${{ needs.prepare.outputs.version }}
+      internal_build: ${{ needs.prepare.outputs.internal_build }}
+    secrets: inherit
+
+  build-linux:
+    name: Build Linux
+    needs: prepare
+    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'linux') || contains(needs.prepare.outputs.platforms, 'desktop')
+    uses: ./.github/workflows/linux.yaml
+    with:
+      repo: AppFlowy-IO/AppFlowy-Premium
+      branch: ${{ needs.prepare.outputs.branch_name }}
+      build_name: ${{ needs.prepare.outputs.version }}
+      internal_build: ${{ needs.prepare.outputs.internal_build }}
+    secrets: inherit
+
+
+
+  collect-artifacts:
+    name: Collect and Upload Artifacts
+    runs-on: ubuntu-latest
+    needs: [prepare, build-android-apk, build-android-aab, build-ios, build-macos, build-windows, build-linux]
+    if: always() && needs.prepare.result == 'success'
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-        with:
-          repository: AppFlowy-IO/AppFlowy-Premium
-          ref: ${{ needs.prepare.outputs.branch_name }}
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.job.target }}
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - name: Install prerequisites
-        working-directory: frontend
+      - name: Check Build Results
         run: |
-          cargo install cargo-make --force --locked --version 0.37.5
-          cargo install duckscript_cli --force --locked
+          echo "📊 Build Results Summary:"
+          echo "Prepare: ${{ needs.prepare.result }}"
+          echo "Android APK: ${{ needs.build-android-apk.result || 'skipped' }}"
+          echo "Android AAB: ${{ needs.build-android-aab.result || 'skipped' }}"
+          echo "iOS: ${{ needs.build-ios.result || 'skipped' }}"
+          echo "macOS: ${{ needs.build-macos.result || 'skipped' }}"
+          echo "Windows: ${{ needs.build-windows.result || 'skipped' }}"
+          echo "Linux: ${{ needs.build-linux.result || 'skipped' }}"
 
-      - name: Configure Git credentials for Cargo
-        run: |
-          git config --global credential.helper store
-          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+          # Count successful builds
+          SUCCESSFUL_BUILDS=0
+          FAILED_BUILDS=0
+          SKIPPED_BUILDS=0
 
-      - name: Build AppFlowy
-        working-directory: frontend
-        run: |
-          flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ needs.prepare.outputs.version }}
+          for result in "${{ needs.build-android-apk.result }}" "${{ needs.build-android-aab.result }}" "${{ needs.build-ios.result }}" "${{ needs.build-macos.result }}" "${{ needs.build-windows.result }}" "${{ needs.build-linux.result }}"; do
+            case $result in
+              "success")
+                ((SUCCESSFUL_BUILDS++))
+                ;;
+              "failure")
+                ((FAILED_BUILDS++))
+                ;;
+              "")
+                ((SKIPPED_BUILDS++))
+                ;;
+            esac
+          done
 
-      - name: Check for Code signing ID
-        run: |
-          if [ -z "${{ env.MACOS_CODESIGN_ID }}" ]; then
-            echo "MACOS_CODESIGN_ID is not set. Skipping code signing step."
-          else
-            echo "MACOS_CODESIGN_ID is set. Proceeding with code signing."
+          echo ""
+          echo "📈 Summary:"
+          echo "✅ Successful builds: $SUCCESSFUL_BUILDS"
+          echo "❌ Failed builds: $FAILED_BUILDS"
+          echo "⏭️ Skipped builds: $SKIPPED_BUILDS"
+
+          if [ $SUCCESSFUL_BUILDS -eq 0 ]; then
+            echo "❌ No successful builds to collect artifacts from"
+            exit 1
           fi
 
-      - name: Codesign AppFlowy
-        run: |
-          echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
-          security create-keychain -p action build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p action build.keychain
-          security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
-          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
-
-      - name: Create macOS dmg
-        run: |
-          brew install create-dmg
-          create-dmg \
-          --volname ${{ env.MACOS_DMG_NAME }} \
-          --hide-extension "AppFlowy.app" \
-          --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
-          --window-size 600 450 \
-          --icon-size 94 \
-          --icon "AppFlowy.app" 141 249 \
-          --app-drop-link 458 249 \
-          "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
-          "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
-
-      - name: Notarize AppFlowy
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
         continue-on-error: true
+
+      - name: Display structure of downloaded files
         run: |
-          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+          echo "📁 Downloaded artifacts:"
+          if [ -d "artifacts" ]; then
+            find artifacts -type f -exec ls -lh {} \; | sort
+            echo ""
+            echo "Total artifacts: $(find artifacts -type f | wc -l)"
+            echo "Total size: $(du -sh artifacts | cut -f1)"
+          else
+            echo "⚠️ No artifacts directory found"
+          fi
 
-      - name: Upload DMG Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.prepare.outputs.upload_url }}
-          asset_path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
-          asset_name: ${{ env.MACOS_DMG_NAME }}.dmg
-          asset_content_type: application/octet-stream
-
-  build-for-linux:
-    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
-    runs-on: ${{ matrix.job.os }}
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        job:
-          - {
-              arch: x86_64,
-              target: x86_64-unknown-linux-gnu,
-              os: ubuntu-latest,
-              flutter_profile: production-linux-x86_64,
-            }
-    env:
-      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release
-      LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.deb
-      LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-linux-x86_64.rpm
-      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ needs.prepare.outputs.version }}-2.x86_64.rpm
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
-        with:
-          repository: AppFlowy-IO/AppFlowy-Premium
-          ref: ${{ needs.prepare.outputs.branch_name }}
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-
-      - name: Install flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.job.target }}
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - name: Install prerequisites
-        working-directory: frontend
+      - name: Upload all artifacts to release
+        if: needs.prepare.outputs.upload_url != ''
         run: |
-          sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
-          sudo apt-get update
-          sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev libcurl4-openssl-dev
-          sudo apt-get install keybinder-3.0 libnotify-dev
-          sudo apt-get -y install alien
-          sudo apt install libmpv-dev mpv
-          source $HOME/.cargo/env
-          cargo install cargo-make --force --locked --version 0.37.5
-          cargo install duckscript_cli --force --locked
-          rustup target add ${{ matrix.job.target }}
+          if [ ! -d "artifacts" ] || [ -z "$(ls -A artifacts)" ]; then
+            echo "⚠️ No artifacts to upload"
+            exit 0
+          fi
 
-      - name: Configure Git credentials for Cargo
-        run: |
-          git config --global credential.helper store
-          echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "🚀 Uploading artifacts to release..."
 
-      - name: Install gcc-aarch64-linux-gnu
-        if: ${{ matrix.job.target == 'aarch64-unknown-linux-gnu' }}
-        working-directory: frontend
-        run: |
-          sudo apt-get install -qy binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libgtk-3-0
+          UPLOAD_COUNT=0
+          UPLOAD_FAILED=0
 
-      - name: Build AppFlowy
-        working-directory: frontend
-        run: |
-          flutter config --enable-linux-desktop
-          cargo make --env APP_VERSION=${{ needs.prepare.outputs.version }} --profile production-linux-x86_64 appflowy
+          for file in artifacts/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              filesize=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
+              echo "Uploading $filename ($(numfmt --to=iec $filesize))..."
 
-      - name: Build Linux package (.deb)
-        working-directory: frontend
-        run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ needs.prepare.outputs.version }}/linux/Release ${{ needs.prepare.outputs.version }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
+              if curl -L \
+                -X POST \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$file" \
+                "${{ needs.prepare.outputs.upload_url }}?name=$filename" \
+                --fail-with-body; then
+                echo "✅ Successfully uploaded $filename"
+                ((UPLOAD_COUNT++))
+              else
+                echo "❌ Failed to upload $filename"
+                ((UPLOAD_FAILED++))
+              fi
+            fi
+          done
 
-      - name: Build Linux package (.rpm)
-        working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: |
-          sudo alien -r ${{ env.LINUX_PACKAGE_DEB_NAME }}
-          cp -r ${{ env.LINUX_PACKAGE_TMP_RPM_NAME }} ${{ env.LINUX_PACKAGE_RPM_NAME }}
+          echo ""
+          echo "📈 Upload Summary:"
+          echo "✅ Successful uploads: $UPLOAD_COUNT"
+          echo "❌ Failed uploads: $UPLOAD_FAILED"
 
-      - name: Upload Debian package
-        id: upload-release-asset-install-package-deb
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.prepare.outputs.upload_url }}
-          asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_DEB_NAME }}
-          asset_name: ${{ env.LINUX_PACKAGE_DEB_NAME }}
-          asset_content_type: application/octet-stream
+          if [ $UPLOAD_FAILED -gt 0 ]; then
+            echo "⚠️ Some uploads failed, but continuing..."
+          fi
 
-      - name: Upload Debian package
-        id: upload-release-asset-install-package-rpm
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.prepare.outputs.upload_url }}
-          asset_path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_RPM_NAME }}
-          asset_name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
-          asset_content_type: application/octet-stream
+  # notify-failure:
+  #   runs-on: ubuntu-latest
+  #   needs: [build-android-apk, build-android-aab, build-ios, build-macos, build-windows, build-linux, collect-artifacts]
+  #   if: failure()
+  #   steps:
+  #     - uses: 8398a7/action-slack@v3
+  #       with:
+  #         status: ${{ job.status }}
+  #         text: |
+  #           🔴🔴🔴 Workflow ${{ github.workflow }} in repository ${{ github.repository }} failed 🔴🔴🔴
+  #           Version: ${{ needs.prepare.outputs.version }}
+  #           Branch: ${{ needs.prepare.outputs.branch_name }}
+  #           Platforms: ${{ needs.prepare.outputs.platforms }}
+  #         fields: repo,message,author,eventName,ref,workflow
+  #       env:
+  #         SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK }}
+  #       if: always()
 
-  notify-failure:
+  notify-success:
     runs-on: ubuntu-latest
-    needs: [build-for-linux, build-for-windows, build-for-macOS]
-    if: failure()
+    needs: [prepare, build-android-apk, build-android-aab, build-ios, build-macos, build-windows, build-linux, collect-artifacts]
+    if: success()
     steps:
       - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           text: |
-            🔴🔴🔴Workflow ${{ github.workflow }} in repository ${{ github.repository }} was failed 🔴🔴🔴.
-          fields: repo,message,author,eventName,ref,workflow
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK }}
-        if: always()
+            ✅ Release build completed successfully!
 
-  notify-slack:
-    runs-on: ubuntu-latest
-    needs: [build-for-linux, build-for-windows, build-for-macOS]
-    steps:
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: |
-            Workflow ${{ github.workflow }} in repository ${{ github.repository }} has completed.
-            Check the release package at https://github.com/${{ github.repository }}/releases/tag/${{ github.ref }}
+            **Version:** ${{ needs.prepare.outputs.version }}
+            **Release Tag:** ${{ needs.prepare.outputs.release_tag }}
+            **Branch:** ${{ needs.prepare.outputs.branch_name }}
+            **Platforms:** ${{ needs.prepare.outputs.platforms }}
+
+            📦 Check the release at: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.release_tag }}
           fields: repo,message,commit,author,eventName,ref,workflow,job,took
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
