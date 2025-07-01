@@ -202,7 +202,7 @@ jobs:
         if: inputs.build_type == 'apk'
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}-android.apk
+          name: AppFlowy-${{ inputs.build_name }}-android-apk
           path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ inputs.build_name }}-android.apk
 
       - name: Rename AAB
@@ -215,14 +215,15 @@ jobs:
         if: inputs.build_type == 'appbundle'
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}.aab
+          name: AppFlowy-${{ inputs.build_name }}-android-aab
           path: frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ inputs.build_name }}.aab
 
       - name: Upload debug symbols
         uses: actions/upload-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}-android-debug-symbols
+          name: AppFlowy-${{ inputs.build_name }}-android-${{ inputs.build_type }}-debug-symbols
           path: frontend/appflowy_flutter/debug-symbols.tar.gz
+
 
       - name: Setup Sentry CLI
         uses: mathieu-bour/setup-sentry-cli@v1
