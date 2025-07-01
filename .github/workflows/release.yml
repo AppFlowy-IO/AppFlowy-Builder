@@ -337,48 +337,6 @@ jobs:
     if: always() && needs.prepare.result == 'success'
     continue-on-error: true
     steps:
-      - name: Check Build Results
-        run: |
-          echo "📊 Build Results Summary:"
-          echo "Prepare: ${{ needs.prepare.result }}"
-          echo "Android APK: ${{ needs.build-android-apk.result || 'skipped' }}"
-          echo "Android AAB: ${{ needs.build-android-aab.result || 'skipped' }}"
-          echo "iOS: ${{ needs.build-ios.result || 'skipped' }}"
-          echo "macOS: ${{ needs.build-macos.result || 'skipped' }}"
-          echo "Windows: ${{ needs.build-windows.result || 'skipped' }}"
-          echo "Linux: ${{ needs.build-linux.result || 'skipped' }}"
-
-          # Count successful builds
-          SUCCESSFUL_BUILDS=0
-          FAILED_BUILDS=0
-          SKIPPED_BUILDS=0
-
-          for result in "${{ needs.build-android-apk.result }}" "${{ needs.build-android-aab.result }}" "${{ needs.build-ios.result }}" "${{ needs.build-macos.result }}" "${{ needs.build-windows.result }}" "${{ needs.build-linux.result }}"; do
-            case $result in
-              "success")
-                ((SUCCESSFUL_BUILDS++))
-                ;;
-              "failure")
-                ((FAILED_BUILDS++))
-                ;;
-              "")
-                ((SKIPPED_BUILDS++))
-                ;;
-            esac
-          done
-
-          echo ""
-          echo "📈 Summary:"
-          echo "✅ Successful builds: $SUCCESSFUL_BUILDS"
-          echo "❌ Failed builds: $FAILED_BUILDS"
-          echo "⏭️ Skipped builds: $SKIPPED_BUILDS"
-
-          if [ $SUCCESSFUL_BUILDS -eq 0 ]; then
-            echo "⚠️ No successful builds found, but continuing to check for any artifacts..."
-          else
-            echo "✅ Found $SUCCESSFUL_BUILDS successful builds to collect artifacts from"
-          fi
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
