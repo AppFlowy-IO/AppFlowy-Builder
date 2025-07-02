@@ -50,6 +50,10 @@ on:
         description: "Internal Build Type"
         required: true
         type: string
+      upload_url:
+        description: "Upload URL for release assets"
+        required: false
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -170,6 +174,66 @@ jobs:
         with:
           name: AppFlowy-${{ inputs.build_name }}-ios-debug-symbols
           path: frontend/appflowy_flutter/debug_info
+
+      - name: Upload IPA to Release
+        if: inputs.upload_url != ''
+        run: |
+          # First, we need to export the IPA from the xcarchive
+          xcodebuild -exportArchive \
+            -archivePath "frontend/appflowy_flutter/build/ios/archive/Runner.xcarchive" \
+            -exportPath "frontend/appflowy_flutter/build/ios/ipa" \
+            -exportOptionsPlist "frontend/appflowy_flutter/ios/ExportOptions.plist" || {
+              echo "Warning: IPA export failed. Uploading xcarchive instead."
+              # If IPA export fails, upload the xcarchive
+              cd frontend/appflowy_flutter/build/ios/archive
+              zip -r "AppFlowy-${{ inputs.build_name }}.xcarchive.zip" Runner.xcarchive
+              
+              filename="AppFlowy-${{ inputs.build_name }}.xcarchive.zip"
+              filepath="AppFlowy-${{ inputs.build_name }}.xcarchive.zip"
+              
+              # URL encode the filename
+              encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+              
+              # Remove the {?name,label} template from upload URL if present
+              upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+              
+              echo "Uploading $filename to release..."
+              
+              curl -L \
+                -X POST \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$filepath" \
+                "${upload_url}?name=${encoded_filename}" \
+                --fail-with-body
+              exit 0
+            }
+          
+          # If we get here, IPA export succeeded
+          filename="AppFlowy-${{ inputs.build_name }}.ipa"
+          filepath="frontend/appflowy_flutter/build/ios/ipa/Runner.ipa"
+          
+          # Rename the IPA file
+          mv "$filepath" "frontend/appflowy_flutter/build/ios/ipa/$filename"
+          filepath="frontend/appflowy_flutter/build/ios/ipa/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
 
       - name: Setup Sentry CLI
         uses: mathieu-bour/setup-sentry-cli@v1

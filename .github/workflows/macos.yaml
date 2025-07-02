@@ -54,6 +54,10 @@ on:
         description: "Internal Build Type"
         required: true
         type: string
+      upload_url:
+        description: "Upload URL for release assets"
+        required: false
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -203,6 +207,52 @@ jobs:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
 
+      - name: Upload ZIP to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_X86_ZIP_NAME }}"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
+      - name: Upload DMG to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_DMG_NAME }}.dmg"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
   aarch64:
     runs-on: macos-latest
 
@@ -345,6 +395,52 @@ jobs:
         with:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
+
+      - name: Upload ZIP to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_AARCH64_ZIP_NAME }}"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
+      - name: Upload DMG to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_DMG_NAME }}.dmg"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
 
   universal:
     runs-on: macos-latest
@@ -512,4 +608,50 @@ jobs:
         with:
           name: ${{ env.MACOS_DMG_NAME }}.dmg
           path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
+
+      - name: Upload ZIP to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_AARCH64_ZIP_NAME }}"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
+      - name: Upload DMG to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_DMG_NAME }}.dmg"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
 

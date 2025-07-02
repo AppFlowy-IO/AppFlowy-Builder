@@ -41,6 +41,10 @@ on:
         description: "Internal Build Type"
         required: true
         type: string
+      upload_url:
+        description: "Upload URL for release assets"
+        required: false
+        type: string
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -176,6 +180,29 @@ jobs:
           name: ${{ env.LINUX_ZIP_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_ZIP_NAME }}
 
+      - name: Upload ZIP to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.LINUX_ZIP_NAME }}"
+          filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
       - name: Upload Linux package
         working-directory: frontend
         run: |
@@ -187,15 +214,84 @@ jobs:
           name: ${{ env.LINUX_PACKAGE_APPIMAGE_NAME}}
           path: frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage
 
+      - name: Upload AppImage to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
+          filepath="frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
       - name: Upload RPM
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_RPM_NAME }}
 
+      - name: Upload RPM to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.LINUX_PACKAGE_RPM_NAME }}"
+          filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
       - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LINUX_PACKAGE_DEB_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_DEB_NAME }}
+
+      - name: Upload DEB to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.LINUX_PACKAGE_DEB_NAME }}"
+          filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
+          
+          # URL encode the filename
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          
+          # Remove the {?name,label} template from upload URL if present
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          
+          echo "Uploading $filename to release..."
+          
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
 
