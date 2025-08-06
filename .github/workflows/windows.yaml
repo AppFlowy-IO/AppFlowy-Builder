@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.4"
+        default: "0.9.7"
       internal_build:
         type: choice
         description: "Internal Build Type (1 for internal, 0 for external)"
@@ -146,15 +146,15 @@ jobs:
         run: |
           filename="${{ env.WINDOWS_INSTALLER_NAME }}.exe"
           filepath="${{ env.WINDOWS_APP_RELEASE_PATH }}/Output/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -176,15 +176,15 @@ jobs:
         run: |
           filename="${{ env.WINDOWS_ZIP_NAME }}"
           filepath="${{ env.WINDOWS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \

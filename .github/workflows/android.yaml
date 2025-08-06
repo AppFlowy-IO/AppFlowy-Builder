@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.4"
+        default: "0.9.7"
       build_number:
         description: "Build Number (it should be unique)"
         required: true
@@ -233,15 +233,15 @@ jobs:
         run: |
           filename="AppFlowy-${{ inputs.build_name }}-android.apk"
           filepath="frontend/appflowy_flutter/build/app/outputs/flutter-apk/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -256,15 +256,15 @@ jobs:
         run: |
           filename="AppFlowy-${{ inputs.build_name }}.aab"
           filepath="frontend/appflowy_flutter/build/app/outputs/bundle/release/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \

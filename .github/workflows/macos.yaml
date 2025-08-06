@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.4"
+        default: "0.9.7"
       arch:
         type: choice
         description: "Build Architecture"
@@ -133,10 +133,10 @@ jobs:
           echo "🔧 Building AppFlowy for x86_64 (Intel)"
           echo "Architecture: $(uname -m)"
           echo "Rust targets: $(rustup target list --installed)"
-          
+
           flutter config --enable-macos-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
-          
+
           echo "✅ x86_64 build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
@@ -146,7 +146,7 @@ jobs:
             echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
             exit 0
           fi
-          
+
           echo "✍️ Code signing AppFlowy app..."
           echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
@@ -154,13 +154,13 @@ jobs:
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
-          
+
           # Verify the app exists before signing
           if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
             echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
             exit 1
           fi
-          
+
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
           echo "✅ Code signing completed"
 
@@ -212,15 +212,15 @@ jobs:
         run: |
           filename="${{ env.MACOS_X86_ZIP_NAME }}"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -235,15 +235,15 @@ jobs:
         run: |
           filename="${{ env.MACOS_DMG_NAME }}.dmg"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -321,10 +321,10 @@ jobs:
           echo "🔧 Building AppFlowy for aarch64 (ARM64)"
           echo "Architecture: $(uname -m)"
           echo "Rust targets: $(rustup target list --installed)"
-          
+
           flutter config --enable-macos-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
-          
+
           echo "✅ aarch64 build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
@@ -334,7 +334,7 @@ jobs:
             echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
             exit 0
           fi
-          
+
           echo "✍️ Code signing AppFlowy app..."
           echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
@@ -342,13 +342,13 @@ jobs:
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
-          
+
           # Verify the app exists before signing
           if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
             echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
             exit 1
           fi
-          
+
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
           echo "✅ Code signing completed"
 
@@ -401,15 +401,15 @@ jobs:
         run: |
           filename="${{ env.MACOS_AARCH64_ZIP_NAME }}"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -424,15 +424,15 @@ jobs:
         run: |
           filename="${{ env.MACOS_DMG_NAME }}.dmg"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -514,16 +514,16 @@ jobs:
           echo "🔧 Building AppFlowy Universal Binary (x86_64 + ARM64)"
           echo "Architecture: $(uname -m)"
           echo "Rust targets: $(rustup target list --installed)"
-          
+
           flutter config --enable-macos-desktop
-          
+
           # Ensure the script is executable
           chmod +x scripts/flutter_release_build/build_universal_package_for_macos.sh
-          
+
           # Run the universal build script with verbose output
           echo "📦 Starting universal build..."
           sh scripts/flutter_release_build/build_universal_package_for_macos.sh ${{ inputs.build_name }}
-          
+
           echo "✅ Universal build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
@@ -533,7 +533,7 @@ jobs:
             echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
             exit 0
           fi
-          
+
           echo "✍️ Code signing AppFlowy app..."
           echo ${{ secrets.MACOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
           security create-keychain -p action build.keychain
@@ -541,13 +541,13 @@ jobs:
           security unlock-keychain -p action build.keychain
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
-          
+
           # Verify the app exists before signing
           if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
             echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
             exit 1
           fi
-          
+
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
           echo "✅ Code signing completed"
 
@@ -614,15 +614,15 @@ jobs:
         run: |
           filename="${{ env.MACOS_AARCH64_ZIP_NAME }}"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -637,15 +637,15 @@ jobs:
         run: |
           filename="${{ env.MACOS_DMG_NAME }}.dmg"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \

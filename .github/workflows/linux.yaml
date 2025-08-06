@@ -14,7 +14,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.4"
+        default: "0.9.7"
       internal_build:
         type: choice
         description: "Internal Build Type (1 for internal, 0 for external)"
@@ -148,21 +148,6 @@ jobs:
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
 
-      - name: Build Linux package (.AppImage)
-        working-directory: frontend
-        run: |
-          echo "📦 Building AppImage package..."
-          
-          # Enable FUSE user space file systems
-          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
-          
-          # Run AppImage build script
-          sh scripts/linux_distribution/appimage/build_appimage.sh ${{ inputs.build_name }} || {
-            echo "⚠️ AppImage build failed, but continuing..."
-            # Create a dummy AppImage file to prevent upload failures
-            touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
-          }
-
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
@@ -173,6 +158,22 @@ jobs:
         run: |
           sudo alien -r ${{ env.LINUX_PACKAGE_DEB_NAME }}
           cp -r ${{ env.LINUX_PACKAGE_TMP_RPM_NAME }} ${{ env.LINUX_PACKAGE_RPM_NAME }}
+
+      - name: Build Linux package (.AppImage)
+        working-directory: frontend
+        continue-on-error: true
+        run: |
+          echo "📦 Building AppImage package..."
+
+          # Enable FUSE user space file systems
+          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+
+          # Run AppImage build script
+          sh scripts/linux_distribution/appimage/build_appimage.sh ${{ inputs.build_name }} || {
+            echo "⚠️ AppImage build failed, but continuing..."
+            # Create a dummy AppImage file to prevent upload failures
+            touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
+          }
 
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
@@ -185,15 +186,15 @@ jobs:
         run: |
           filename="${{ env.LINUX_ZIP_NAME }}"
           filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -215,19 +216,20 @@ jobs:
           path: frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage
 
       - name: Upload AppImage to Release
+        continue-on-error: true
         if: inputs.upload_url != ''
         run: |
           filename="${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
           filepath="frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -248,15 +250,15 @@ jobs:
         run: |
           filename="${{ env.LINUX_PACKAGE_RPM_NAME }}"
           filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
@@ -277,15 +279,15 @@ jobs:
         run: |
           filename="${{ env.LINUX_PACKAGE_DEB_NAME }}"
           filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
-          
+
           # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-          
+
           # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-          
+
           echo "Uploading $filename to release..."
-          
+
           curl -L \
             -X POST \
             -H "Accept: application/vnd.github.v3+json" \
