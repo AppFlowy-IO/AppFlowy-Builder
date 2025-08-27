@@ -254,7 +254,7 @@ jobs:
             --fail-with-body
 
   aarch64:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     if: ${{ inputs.arch == 'All' || inputs.arch == 'aarch64' }}
 
