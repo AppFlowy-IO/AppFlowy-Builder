@@ -87,18 +87,21 @@ jobs:
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
           IOS_WIDGET_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROVISION_PROFILE_BASE64 }}
+          IOS_SHARE_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_SHARE_PROVISION_PROFILE_BASE64 }}
           IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
         run: |
           # create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
           WPP_PATH=$RUNNER_TEMP/build_wpp.mobileprovision
+          SPP_PATH=$RUNNER_TEMP/build_spp.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
           # import certificate and provisioning profile from secrets
           echo -n "$IOS_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
           echo -n "$IOS_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
           echo -n "$IOS_WIDGET_PROVISION_PROFILE_BASE64" | base64 --decode -o $WPP_PATH
+          echo -n "$IOS_SHARE_PROVISION_PROFILE_BASE64" | base64 --decode -o $SPP_PATH
 
           # create temporary keychain
           security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -113,6 +116,7 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
           cp $WPP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $SPP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
       - name: Install Rust toolchain
         id: rust_toolchain
