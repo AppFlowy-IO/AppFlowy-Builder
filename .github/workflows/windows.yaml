@@ -129,6 +129,10 @@ jobs:
         run: |
           cp scripts/windows_installer/* ../${{ env.WINDOWS_APP_RELEASE_PATH }}
 
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup -y
+
       - name: Build installer executable
         working-directory: ${{ env.WINDOWS_APP_RELEASE_PATH }}
         run: |
