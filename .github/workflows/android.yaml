@@ -119,11 +119,12 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      - uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: "r26d"
-          add-to-path: true
+      - name: Install Android NDK
+        run: |
+          # Install NDK version 28.0.12433566 which AppFlowy expects
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.0.12433566"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_PATH
 
       - name: Accept Android licenses
         run: |
@@ -182,8 +183,6 @@ jobs:
 
       - name: Build AppFlowy
         working-directory: frontend
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cargo make --profile production-android appflowy-core-dev-android
           cargo make --profile production-android code_generation
