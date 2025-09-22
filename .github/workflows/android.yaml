@@ -125,6 +125,10 @@ jobs:
           ndk-version: "r26d"
           add-to-path: true
 
+      - name: Accept Android licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.os }}
