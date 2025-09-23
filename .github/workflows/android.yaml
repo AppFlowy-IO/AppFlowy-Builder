@@ -122,14 +122,34 @@ jobs:
       - name: Install Android NDK
         run: |
           # Install NDK version 28.0.12433566 which AppFlowy expects
+          echo "Installing Android NDK 28.0.12433566..."
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+          # Accept licenses first
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+          # Install the specific NDK version
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.0.12433566"
+
+          # Verify installation
+          echo "Checking NDK installation..."
+          ls -la $ANDROID_HOME/ndk/ || echo "NDK directory not found"
+
+          # Set environment variables
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
           echo "$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_PATH
 
-      - name: Accept Android licenses
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          # Verify the NDK path exists
+          if [ -d "$ANDROID_HOME/ndk/28.0.12433566" ]; then
+            echo "NDK 28.0.12433566 installed successfully at $ANDROID_HOME/ndk/28.0.12433566"
+          else
+            echo "Error: NDK 28.0.12433566 not found at expected path"
+            echo "Available NDK versions:"
+            ls -la $ANDROID_HOME/ndk/
+            exit 1
+          fi
 
       - uses: Swatinem/rust-cache@v2
         with:
