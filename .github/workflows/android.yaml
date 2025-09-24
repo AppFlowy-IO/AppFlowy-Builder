@@ -34,6 +34,14 @@ on:
         options:
           - "0"
           - "1"
+      build_mode:
+        type: choice
+        description: "Build Mode (release or debug)"
+        required: false
+        default: "release"
+        options:
+          - "release"
+          - "debug"
   workflow_call:
     inputs:
       repo:
@@ -64,6 +72,11 @@ on:
         description: "Upload URL for release assets"
         required: false
         type: string
+      build_mode:
+        description: "Build Mode"
+        required: false
+        type: string
+        default: "release"
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -205,14 +218,27 @@ jobs:
       - name: Build AppFlowy
         working-directory: frontend
         run: |
-          cargo make --profile production-android appflowy-core-dev-android
-          cargo make --profile production-android code_generation
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            cargo make --profile development-android appflowy-core-dev-android
+            cargo make --profile development-android code_generation
+          else
+            cargo make --profile production-android appflowy-core-dev-android
+            cargo make --profile production-android code_generation
+          fi
 
           cd appflowy_flutter
-          if [ ${{ inputs.build_type }} = "apk" ]; then
-            flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
-          elif [ ${{ inputs.build_type }} = "appbundle" ]; then
-            flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            if [ ${{ inputs.build_type }} = "apk" ]; then
+              flutter build apk --debug --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }}
+            elif [ ${{ inputs.build_type }} = "appbundle" ]; then
+              flutter build appbundle --debug --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }}
+            fi
+          else
+            if [ ${{ inputs.build_type }} = "apk" ]; then
+              flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            elif [ ${{ inputs.build_type }} = "appbundle" ]; then
+              flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            fi
           fi
 
       - name: Compress debug symbols

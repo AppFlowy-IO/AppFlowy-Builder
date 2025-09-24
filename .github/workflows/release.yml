@@ -52,6 +52,14 @@ on:
         options:
           - "0"
           - "1"
+      build_mode:
+        description: "Build mode (release or debug)"
+        required: false
+        type: choice
+        default: "release"
+        options:
+          - "release"
+          - "debug"
       upload_to_store:
         description: "Upload to app stores (not implemented yet)"
         required: false
@@ -81,6 +89,7 @@ jobs:
       android_build_type: ${{ steps.parse_inputs.outputs.android_build_type }}
       macos_arch: ${{ steps.parse_inputs.outputs.macos_arch }}
       internal_build: ${{ steps.parse_inputs.outputs.internal_build }}
+      build_mode: ${{ steps.parse_inputs.outputs.build_mode }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Parse Inputs
@@ -94,6 +103,7 @@ jobs:
             ANDROID_BUILD_TYPE="${{ github.event.inputs.android_build_type }}"
             MACOS_ARCH="${{ github.event.inputs.macos_arch }}"
             INTERNAL_BUILD="${{ github.event.inputs.internal_build }}"
+            BUILD_MODE="${{ github.event.inputs.build_mode }}"
           else
             # Tag trigger
             TAG_NAME=${GITHUB_REF#refs/tags/}
@@ -103,6 +113,7 @@ jobs:
             ANDROID_BUILD_TYPE="both"
             MACOS_ARCH="All"
             INTERNAL_BUILD="1"
+            BUILD_MODE="release"
             if [ -z "$BRANCH_NAME" ]; then
               echo "Error: BRANCH_NAME is empty. The tag name should be in the format of <version>_<branch_name>"
               exit 1
@@ -149,6 +160,7 @@ jobs:
           echo "📱 Android Build Type: $ANDROID_BUILD_TYPE"
           echo "💻 macOS Architecture: $MACOS_ARCH"
           echo "🏗️ Internal Build: $INTERNAL_BUILD"
+          echo "🔧 Build Mode: $BUILD_MODE"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
@@ -158,6 +170,7 @@ jobs:
           echo "android_build_type=$ANDROID_BUILD_TYPE" >> $GITHUB_OUTPUT
           echo "macos_arch=$MACOS_ARCH" >> $GITHUB_OUTPUT
           echo "internal_build=$INTERNAL_BUILD" >> $GITHUB_OUTPUT
+          echo "build_mode=$BUILD_MODE" >> $GITHUB_OUTPUT
 
       - name: Validate Branch Exists
         run: |
@@ -262,6 +275,7 @@ jobs:
       build_number: ${{ needs.prepare.outputs.build_number }}
       build_type: apk
       internal_build: ${{ needs.prepare.outputs.internal_build }}
+      build_mode: ${{ needs.prepare.outputs.build_mode }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
     secrets: inherit
 
@@ -277,6 +291,7 @@ jobs:
       build_number: ${{ needs.prepare.outputs.build_number }}
       build_type: appbundle
       internal_build: ${{ needs.prepare.outputs.internal_build }}
+      build_mode: ${{ needs.prepare.outputs.build_mode }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
     secrets: inherit
 
@@ -291,6 +306,7 @@ jobs:
       build_name: ${{ needs.prepare.outputs.version }}
       build_number: ${{ needs.prepare.outputs.build_number }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
+      build_mode: ${{ needs.prepare.outputs.build_mode }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
     secrets: inherit
 
@@ -305,6 +321,7 @@ jobs:
       build_name: ${{ needs.prepare.outputs.version }}
       arch: ${{ needs.prepare.outputs.macos_arch }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
+      build_mode: ${{ needs.prepare.outputs.build_mode }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
     secrets: inherit
 
@@ -318,6 +335,7 @@ jobs:
       branch: ${{ needs.prepare.outputs.branch_name }}
       build_name: ${{ needs.prepare.outputs.version }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
+      build_mode: ${{ needs.prepare.outputs.build_mode }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
     secrets: inherit
 
@@ -331,6 +349,7 @@ jobs:
       branch: ${{ needs.prepare.outputs.branch_name }}
       build_name: ${{ needs.prepare.outputs.version }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
+      build_mode: ${{ needs.prepare.outputs.build_mode }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
     secrets: inherit
 

@@ -32,6 +32,14 @@ on:
         options:
           - "0"
           - "1"
+      build_mode:
+        type: choice
+        description: "Build Mode (release or debug)"
+        required: false
+        default: "release"
+        options:
+          - "release"
+          - "debug"
   workflow_call:
     inputs:
       repo:
@@ -58,6 +66,11 @@ on:
         description: "Upload URL for release assets"
         required: false
         type: string
+      build_mode:
+        description: "Build Mode"
+        required: false
+        type: string
+        default: "release"
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -135,7 +148,11 @@ jobs:
           echo "Rust targets: $(rustup target list --installed)"
 
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }} --mode=debug
+          else
+            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          fi
 
           echo "✅ x86_64 build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
@@ -323,7 +340,11 @@ jobs:
           echo "Rust targets: $(rustup target list --installed)"
 
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }} --mode=debug
+          else
+            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          fi
 
           echo "✅ aarch64 build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/

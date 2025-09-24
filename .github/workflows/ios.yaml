@@ -28,6 +28,14 @@ on:
           - "0"
           - "1"
           - "2"
+      build_mode:
+        type: choice
+        description: "Build Mode (release or debug)"
+        required: false
+        default: "release"
+        options:
+          - "release"
+          - "debug"
   workflow_call:
     inputs:
       repo:
@@ -54,6 +62,11 @@ on:
         description: "Upload URL for release assets"
         required: false
         type: string
+      build_mode:
+        description: "Build Mode"
+        required: false
+        type: string
+        default: "release"
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -165,11 +178,20 @@ jobs:
         run: |
           export CARGO_FEATURE_NO_NEON=1
 
-          cargo make --profile production-ios-arm64 appflowy-core-dev-ios
-          cargo make --profile production-ios-arm64 code_generation
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            cargo make --profile development-ios-arm64 appflowy-core-dev-ios
+            cargo make --profile development-ios-arm64 code_generation
+          else
+            cargo make --profile production-ios-arm64 appflowy-core-dev-ios
+            cargo make --profile production-ios-arm64 code_generation
+          fi
 
           cd appflowy_flutter
-          flutter build ipa --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            flutter build ipa --debug --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }}
+          else
+            flutter build ipa --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          fi
       - name: Upload ipa
         uses: actions/upload-artifact@v4
         with:

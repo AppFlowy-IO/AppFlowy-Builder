@@ -23,6 +23,14 @@ on:
         options:
           - "0"
           - "1"
+      build_mode:
+        type: choice
+        description: "Build Mode (release or debug)"
+        required: false
+        default: "release"
+        options:
+          - "release"
+          - "debug"
   workflow_call:
     inputs:
       repo:
@@ -45,6 +53,11 @@ on:
         description: "Upload URL for release assets"
         required: false
         type: string
+      build_mode:
+        description: "Build Mode"
+        required: false
+        type: string
+        default: "release"
 
 env:
   FLUTTER_VERSION: "3.27.4"
@@ -114,9 +127,15 @@ jobs:
         # the cargo make script has to be run separately because of file locking issues
         run: |
           flutter config --enable-windows-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
-          cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
-          dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
+          if [ "${{ inputs.build_mode }}" == "debug" ]; then
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }} --mode=debug
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile development-windows-x86 appflowy
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }} --mode=debug
+          else
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
+          fi
 
       - name: Archive Asset
         uses: vimtor/action-zip@v1
