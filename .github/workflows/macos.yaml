@@ -83,9 +83,9 @@ jobs:
     if: ${{ inputs.arch == 'All' || inputs.arch == 'x86_64' }}
 
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
-      MACOS_X86_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64.zip
-      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}
+      MACOS_X86_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}.zip
+      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}
 
     steps:
       - name: Checkout source code
@@ -149,13 +149,19 @@ jobs:
 
           flutter config --enable-macos-desktop
           if [ "${{ inputs.build_mode }}" = "debug" ]; then
-            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }} --mode=debug
+            echo "Building in DEBUG mode"
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }} --mode=debug
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile development-mac-x86_64 appflowy-dev
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }} --mode=debug
           else
-            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+            echo "Building in RELEASE mode"
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-mac-x86_64 appflowy
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
           fi
 
           echo "✅ x86_64 build completed"
-          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
+          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}/
 
       - name: Codesign AppFlowy
         run: |
@@ -276,9 +282,9 @@ jobs:
     if: ${{ inputs.arch == 'All' || inputs.arch == 'aarch64' }}
 
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
-      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-aarch64.zip
-      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-aarch64
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}
+      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-aarch64${{ inputs.build_mode == 'debug' && '-debug' || '' }}.zip
+      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-aarch64${{ inputs.build_mode == 'debug' && '-debug' || '' }}
 
     steps:
       - name: Checkout source code
@@ -341,13 +347,19 @@ jobs:
 
           flutter config --enable-macos-desktop
           if [ "${{ inputs.build_mode }}" = "debug" ]; then
-            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }} --mode=debug
+            echo "Building in DEBUG mode"
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }} --mode=debug
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile development-mac-arm64 appflowy-dev
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }} --mode=debug
           else
-            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+            echo "Building in RELEASE mode"
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-mac-arm64 appflowy
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
           fi
 
           echo "✅ aarch64 build completed"
-          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
+          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}/
 
       - name: Codesign AppFlowy
         run: |
@@ -469,9 +481,9 @@ jobs:
     if: ${{ inputs.arch == 'All' || inputs.arch == 'universal' }}
 
     env:
-      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
-      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal.zip
-      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal
+      MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}
+      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal${{ inputs.build_mode == 'debug' && '-debug' || '' }}.zip
+      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal${{ inputs.build_mode == 'debug' && '-debug' || '' }}
 
     steps:
       - name: Checkout source code
@@ -546,7 +558,7 @@ jobs:
           sh scripts/flutter_release_build/build_universal_package_for_macos.sh ${{ inputs.build_name }}
 
           echo "✅ Universal build completed"
-          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
+          ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}/
 
       - name: Codesign AppFlowy
         run: |

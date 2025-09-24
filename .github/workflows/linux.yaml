@@ -74,12 +74,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     env:
-      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/linux/Release
-      LINUX_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-linux.tar.gz
-      LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.deb
-      LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.rpm
+      LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/linux${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }}
+      LINUX_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-linux${{ inputs.build_mode == 'debug' && '-debug' || '' }}.tar.gz
+      LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}.deb
+      LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}.rpm
       LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ inputs.build_name }}-2.x86_64.rpm
-      LINUX_PACKAGE_APPIMAGE_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.AppImage
+      LINUX_PACKAGE_APPIMAGE_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}.AppImage
 
     steps:
       # the following step is required to avoid running out of space
@@ -143,7 +143,7 @@ jobs:
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
         shell: bash
 
       - name: Configure Git credentials for Cargo
@@ -156,9 +156,15 @@ jobs:
         run: |
           flutter config --enable-linux-desktop
           if [ "${{ inputs.build_mode }}" = "debug" ]; then
-            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }} --mode=debug
+            echo "Building in DEBUG mode"
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }} --mode=debug
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile development-linux-x86_64 appflowy-dev
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }} --mode=debug
           else
-            dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+            echo "Building in RELEASE mode"
+            dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-linux-x86_64 appflowy
+            dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
           fi
 
       - name: Archive Asset
@@ -168,7 +174,7 @@ jobs:
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ inputs.build_name }}/linux/Release ${{ inputs.build_name }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
+          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ inputs.build_name }}/linux${{ inputs.build_mode == 'debug' && '/Debug' || '/Release' }} ${{ inputs.build_name }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
 
       - name: Build Linux package (.rpm)
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}

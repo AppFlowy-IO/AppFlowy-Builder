@@ -66,9 +66,9 @@ env:
 jobs:
   build:
     env:
-      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ inputs.build_name }}\windows
-      WINDOWS_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-windows-x86_64.zip
-      WINDOWS_INSTALLER_NAME: AppFlowy-${{ inputs.build_name }}-windows-x86_64
+      WINDOWS_APP_RELEASE_PATH: frontend\appflowy_flutter\product\${{ inputs.build_name }}\windows${{ inputs.build_mode == 'debug' && '\Debug' || '' }}
+      WINDOWS_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-windows-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}.zip
+      WINDOWS_INSTALLER_NAME: AppFlowy-${{ inputs.build_name }}-windows-x86_64${{ inputs.build_mode == 'debug' && '-debug' || '' }}
 
     runs-on: windows-latest
 
@@ -124,14 +124,17 @@ jobs:
 
       - name: Build Windows app
         working-directory: frontend
+        shell: bash
         # the cargo make script has to be run separately because of file locking issues
         run: |
           flutter config --enable-windows-desktop
           if [ "${{ inputs.build_mode }}" == "debug" ]; then
+            echo "Building in DEBUG mode"
             dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }} --mode=debug
-            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile development-windows-x86 appflowy
+            cargo make --env APP_VERSION=${{ inputs.build_name }} --profile development-windows-x86 appflowy-dev
             dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }} --mode=debug
           else
+            echo "Building in RELEASE mode"
             dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
             cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
             dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
