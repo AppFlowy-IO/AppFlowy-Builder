@@ -1,4 +1,6 @@
 name: Build AppFlowy macOS
+run-name: Build ${{ github.event.inputs.branch }}/${{ github.event.inputs.build_number }} - ${{ github.event.inputs.internal_build }}
+
 
 on:
   workflow_dispatch:
