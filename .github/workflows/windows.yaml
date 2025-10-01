@@ -15,7 +15,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.7"
+        default: "0.10.1"
       internal_build:
         type: choice
         description: "Internal Build Type (1 for internal, 0 for external)"
@@ -109,7 +109,6 @@ jobs:
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
           git config --global url."https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
-
       - name: Build Windows app
         working-directory: frontend
         # the cargo make script has to be run separately because of file locking issues
@@ -198,4 +197,3 @@ jobs:
             --data-binary @"$filepath" \
             "${upload_url}?name=${encoded_filename}" \
             --fail-with-body
-

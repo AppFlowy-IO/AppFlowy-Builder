@@ -15,11 +15,11 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.7"
+        default: "0.10.1"
       build_number:
         description: "Build Number (it should be unique)"
         required: true
-        default: "2909401"
+        default: "2910101"
       build_type:
         type: choice
         description: "Build Type"
@@ -27,6 +27,7 @@ on:
         options:
           - "apk"
           - "appbundle"
+          - "both"
       internal_build:
         type: choice
         description: "Internal Build Type (1 for internal, 0 for external)"
@@ -214,6 +215,9 @@ jobs:
             flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           elif [ ${{ inputs.build_type }} = "appbundle" ]; then
             flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          elif [ ${{ inputs.build_type }} = "both" ]; then
+            flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           fi
 
       - name: Compress debug symbols
@@ -222,26 +226,26 @@ jobs:
           tar -czf debug-symbols.tar.gz debug_info
 
       - name: Rename APK
-        if: inputs.build_type == 'apk'
+        if: inputs.build_type == 'apk' || inputs.build_type == 'both'
         run: |
           mv frontend/appflowy_flutter/build/app/outputs/flutter-apk/app-release.apk frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ inputs.build_name }}-android.apk
         shell: bash
 
       - name: Upload APK
-        if: inputs.build_type == 'apk'
+        if: inputs.build_type == 'apk' || inputs.build_type == 'both'
         uses: actions/upload-artifact@v4
         with:
           name: AppFlowy-${{ inputs.build_name }}-android-apk
           path: frontend/appflowy_flutter/build/app/outputs/flutter-apk/AppFlowy-${{ inputs.build_name }}-android.apk
 
       - name: Rename AAB
-        if: inputs.build_type == 'appbundle'
+        if: inputs.build_type == 'appbundle' || inputs.build_type == 'both'
         run: |
           mv frontend/appflowy_flutter/build/app/outputs/bundle/release/app-release.aab frontend/appflowy_flutter/build/app/outputs/bundle/release/AppFlowy-${{ inputs.build_name }}.aab
         shell: bash
 
       - name: Upload AAB
-        if: inputs.build_type == 'appbundle'
+        if: inputs.build_type == 'appbundle' || inputs.build_type == 'both'
         uses: actions/upload-artifact@v4
         with:
           name: AppFlowy-${{ inputs.build_name }}-android-aab
@@ -254,7 +258,7 @@ jobs:
           path: frontend/appflowy_flutter/debug-symbols.tar.gz
 
       - name: Upload APK to Release
-        if: inputs.build_type == 'apk' && inputs.upload_url != ''
+        if: (inputs.build_type == 'apk' || inputs.build_type == 'both') && inputs.upload_url != ''
         run: |
           filename="AppFlowy-${{ inputs.build_name }}-android.apk"
           filepath="frontend/appflowy_flutter/build/app/outputs/flutter-apk/$filename"
@@ -277,7 +281,7 @@ jobs:
             --fail-with-body
 
       - name: Upload AAB to Release
-        if: inputs.build_type == 'appbundle' && inputs.upload_url != ''
+        if: (inputs.build_type == 'appbundle' || inputs.build_type == 'both') && inputs.upload_url != ''
         run: |
           filename="AppFlowy-${{ inputs.build_name }}.aab"
           filepath="frontend/appflowy_flutter/build/app/outputs/bundle/release/$filename"

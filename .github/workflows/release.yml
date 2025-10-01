@@ -8,6 +8,7 @@ on:
         description: "Release version (e.g., 0.9.4)"
         required: true
         type: string
+        default: "0.10.1"
       branch:
         description: "Source branch for build"
         required: true
@@ -30,7 +31,7 @@ on:
         description: "Android build type"
         required: false
         type: choice
-        default: "both"
+        default: "apk"
         options:
           - "both"
           - "apk"
@@ -39,7 +40,7 @@ on:
         description: "macOS architecture"
         required: false
         type: choice
-        default: "All"
+        default: "universal"
         options:
           - "All"
           - "x86_64"
@@ -355,7 +356,16 @@ jobs:
 
   notify-success:
     runs-on: ubuntu-latest
-    needs: [prepare, build-android-apk, build-android-aab, build-ios, build-macos, build-windows, build-linux]
+    needs:
+      [
+        prepare,
+        build-android-apk,
+        build-android-aab,
+        build-ios,
+        build-macos,
+        build-windows,
+        build-linux,
+      ]
     if: success()
     steps:
       - uses: 8398a7/action-slack@v3
