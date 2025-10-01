@@ -349,52 +349,60 @@ jobs:
         working-directory: frontend/appflowy_flutter
         run: |
           $DECODED = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}"))
-          echo $DECODED > PRIVATE_KEY
+          Set-Content -Path PRIVATE_KEY -Value $DECODED -NoNewline -Encoding UTF8
           dart run auto_updater:sign_update -f PRIVATE_KEY app.exe > edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
         run: |
           $VERSION="${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}"
-          if [ "${{ github.event.inputs.releaseVersionNumber }}" != "" ]; then
-            $RELEASE_VERSION_NUMBER=${{ github.event.inputs.releaseVersionNumber }}
-          else
+          if ("${{ github.event.inputs.releaseVersionNumber }}" -ne "") {
+            $RELEASE_VERSION_NUMBER="${{ github.event.inputs.releaseVersionNumber }}"
+          } else {
             $RELEASE_VERSION_NUMBER=$VERSION
-          fi
+          }
           $ASSETS_URL="https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-windows-x86_64.exe"
-          $SIGNATURE=$(grep -o 'sparkle:edSignature="[^"]*"' edSignature.txt | cut -d'"' -f2)
-          $LENGTH=$(grep -o 'length="[^"]*"' edSignature.txt | cut -d'"' -f2 | tr -d '\n')
 
-          APPCAST_FILE_NAME="appcast-windows-x86_64.xml"
+          $edSignatureContent = Get-Content edSignature.txt -Raw
+          $SIGNATURE = if ($edSignatureContent -match 'sparkle:edSignature="([^"]*)"') { $matches[1] } else { "" }
+          $LENGTH = if ($edSignatureContent -match 'length="([^"]*)"') { $matches[1] } else { "" }
+
+          $APPCAST_FILE_NAME="appcast-windows-x86_64.xml"
+          $PUBDATE = Get-Date -Format "r"
+
+          $criticalUpdateLine = ""
+          if ("${{ github.event.inputs.criticalUpdate }}" -eq "true") {
+            $criticalUpdateLine = "            <sparkle:criticalUpdate>true</sparkle:criticalUpdate>"
+          }
 
           # Create appcast.xml
-          echo '<?xml version="1.0" encoding="UTF-8"?>' > $APPCAST_FILE_NAME
-          echo '<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">' >> $APPCAST_FILE_NAME
-          echo '    <channel>' >> $APPCAST_FILE_NAME
-          echo '        <title>AppFlowy</title>' >> $APPCAST_FILE_NAME
-          echo '        <description>Most recent updates to AppFlowy</description>' >> $APPCAST_FILE_NAME
-          echo '        <language>en</language>' >> $APPCAST_FILE_NAME
-          echo '        <item>' >> $APPCAST_FILE_NAME
-          echo "            <title>Version $RELEASE_VERSION_NUMBER</title>" >> $APPCAST_FILE_NAME
-          echo "            <sparkle:version>2</sparkle:version>" >> $APPCAST_FILE_NAME
-          echo "            <sparkle:shortVersionString>$RELEASE_VERSION_NUMBER</sparkle:shortVersionString>" >> $APPCAST_FILE_NAME
-          if [ "${{ github.event.inputs.criticalUpdate }}" = "true" ]; then
-              echo "            <sparkle:criticalUpdate>true</sparkle:criticalUpdate>" >> $APPCAST_FILE_NAME
-          fi
-          echo "            <pubDate>$(date -R)</pubDate>" >> $APPCAST_FILE_NAME
-          echo "            <enclosure" >> $APPCAST_FILE_NAME
-          echo "                url=\"$ASSETS_URL\"" >> $APPCAST_FILE_NAME
-          echo "                sparkle:os=\"windows\"" >> $APPCAST_FILE_NAME
-          echo "                type=\"application/octet-stream\"" >> $APPCAST_FILE_NAME
-          echo "                sparkle:edSignature=\"$SIGNATURE\"" >> $APPCAST_FILE_NAME
-          echo "                length=\"$LENGTH\"" >> $APPCAST_FILE_NAME
-          echo "                />" >> $APPCAST_FILE_NAME
-          echo '        </item>' >> $APPCAST_FILE_NAME
-          echo '    </channel>' >> $APPCAST_FILE_NAME
-          echo '</rss>' >> $APPCAST_FILE_NAME
+          @"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+              <channel>
+                  <title>AppFlowy</title>
+                  <description>Most recent updates to AppFlowy</description>
+                  <language>en</language>
+                  <item>
+                      <title>Version $RELEASE_VERSION_NUMBER</title>
+                      <sparkle:version>2</sparkle:version>
+                      <sparkle:shortVersionString>$RELEASE_VERSION_NUMBER</sparkle:shortVersionString>
+          $criticalUpdateLine
+                      <pubDate>$PUBDATE</pubDate>
+                      <enclosure
+                          url="$ASSETS_URL"
+                          sparkle:os="windows"
+                          type="application/octet-stream"
+                          sparkle:edSignature="$SIGNATURE"
+                          length="$LENGTH"
+                          />
+                  </item>
+              </channel>
+          </rss>
+          "@ | Set-Content -Path $APPCAST_FILE_NAME
 
-          echo "Generated $APPCAST_FILE_NAME:"
-          cat $APPCAST_FILE_NAME
+          Write-Host "Generated $APPCAST_FILE_NAME:"
+          Get-Content $APPCAST_FILE_NAME
 
       - name: Upload Appcast files
         uses: actions/upload-artifact@v4
