@@ -348,8 +348,7 @@ jobs:
       - name: Generate EdSignature for Windows
         working-directory: frontend/appflowy_flutter
         run: |
-          # Run sign_update
-          dart run auto_updater:sign_update app.exe > edSignature.txt
+          dart run auto_updater:sign_update -f dsa_priv.pem app.exe > edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
