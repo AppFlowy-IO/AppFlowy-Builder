@@ -347,7 +347,9 @@ jobs:
 
       - name: Generate EdSignature for Windows
         working-directory: frontend/appflowy_flutter
+        shell: bash
         run: |
+          echo "${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}" > dsa_priv.pem
           dart run auto_updater:sign_update -f dsa_priv.pem app.exe > edSignature.txt
 
       - name: Generate Appcast.xml
