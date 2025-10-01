@@ -348,9 +348,8 @@ jobs:
       - name: Generate EdSignature for Windows
         working-directory: frontend/appflowy_flutter
         run: |
-          $DECODED = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}"))
-          Set-Content -Path PRIVATE_KEY -Value $DECODED -NoNewline -Encoding UTF8
-          dart run auto_updater:sign_update -f PRIVATE_KEY app.exe > edSignature.txt
+          # Run sign_update
+          dart run auto_updater:sign_update app.exe > edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
