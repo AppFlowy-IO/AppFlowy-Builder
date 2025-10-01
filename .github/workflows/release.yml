@@ -138,9 +138,9 @@ jobs:
           # Generate build number from timestamp
           BUILD_NUMBER=$(date +%s)
 
-          # Generate timestamped release tag (no colons allowed in tag names)
-          TIMESTAMP=$(date +"%y%m%d-%H%M")
-          RELEASE_TAG="${VERSION}-${TIMESTAMP}"
+          # Generate timestamped release tag in SGT (GMT+8) with branch name
+          TIMESTAMP=$(TZ='Asia/Singapore' date +"%y%m%d-%H%M")
+          RELEASE_TAG="${VERSION}-${BRANCH_NAME}-${TIMESTAMP}"
 
           echo "✅ Validation passed!"
           echo "📦 Version: $VERSION"
@@ -234,12 +234,49 @@ jobs:
       - name: Create release notes
         id: create_release_notes
         run: |
+          # Get build time in SGT (GMT+8)
+          BUILD_TIME_SGT=$(TZ='Asia/Singapore' date +"%Y-%m-%d %H:%M:%S %Z")
+
+          # Extract changelog content
           if [[ "${{ github.event.inputs.release_notes }}" != "" ]]; then
-            RELEASE_NOTES="${{ github.event.inputs.release_notes }}"
+            CHANGELOG_CONTENT="${{ github.event.inputs.release_notes }}"
           else
-            RELEASE_NOTES=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_inputs.outputs.version }}/"'!d;' || echo "Release ${{ steps.parse_inputs.outputs.version }}")
+            CHANGELOG_CONTENT=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_inputs.outputs.version }}/"'!d;' || echo "Release ${{ steps.parse_inputs.outputs.version }}")
           fi
-          echo "release_notes=$RELEASE_NOTES" >> $GITHUB_OUTPUT
+
+          # Create enhanced release notes
+          RELEASE_NOTES=$(cat <<EOF
+          # Release ${{ steps.parse_inputs.outputs.version }}
+
+          **Branch:** ${{ steps.parse_inputs.outputs.branch_name }}
+          **Build Time (SGT/GMT+8):** ${BUILD_TIME_SGT}
+          **Triggered By:** @${{ github.actor }}
+          **Build Number:** ${{ steps.parse_inputs.outputs.build_number }}
+          **Platforms:** ${{ steps.parse_inputs.outputs.platforms }}
+
+          ---
+
+          ## What's Changed
+
+          ${CHANGELOG_CONTENT}
+
+          ---
+
+          ### Build Artifacts
+
+          - Android APK/AAB: Available for download
+          - iOS IPA: Available for download
+          - macOS DMG: Available for download
+          - Windows EXE: Available for download
+          - Linux AppImage: Available for download
+
+          *Note: Only artifacts for the selected platforms will be available.*
+          EOF
+          )
+
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Create release
