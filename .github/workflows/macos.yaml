@@ -1,7 +1,6 @@
 name: Build AppFlowy macOS
 run-name: Build ${{ github.event.inputs.branch }}/${{ github.event.inputs.build_name }} - ${{ github.event.inputs.internal_build }}
 
-
 on:
   workflow_dispatch:
     inputs:
@@ -16,7 +15,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.9.7"
+        default: "0.10.1"
       arch:
         type: choice
         description: "Build Architecture"
@@ -127,7 +126,6 @@ jobs:
         run: |
           git config --global credential.helper store
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
-
 
       - name: Build AppFlowy (x86_64)
         working-directory: frontend
@@ -656,4 +654,3 @@ jobs:
             --data-binary @"$filepath" \
             "${upload_url}?name=${encoded_filename}" \
             --fail-with-body
-
