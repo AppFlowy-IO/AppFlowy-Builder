@@ -234,17 +234,14 @@ jobs:
       - name: Create release notes
         id: create_release_notes
         run: |
-          # Get build time in SGT (GMT+8)
           BUILD_TIME_SGT=$(TZ='Asia/Singapore' date +"%Y-%m-%d %H:%M:%S %Z")
+          COMMITS=$(git log -5 --pretty=format:"- %h - %s (%an)" || echo "No commits available")
 
-          # Extract changelog content
+          ADDITIONAL_NOTES=""
           if [[ "${{ github.event.inputs.release_notes }}" != "" ]]; then
-            CHANGELOG_CONTENT="${{ github.event.inputs.release_notes }}"
-          else
-            CHANGELOG_CONTENT=$(cat CHANGELOG.md | sed -e '/./{H;$!d;}' -e "x;/##\ Version\ ${{ steps.parse_inputs.outputs.version }}/"'!d;' || echo "Release ${{ steps.parse_inputs.outputs.version }}")
+            ADDITIONAL_NOTES="${{ github.event.inputs.release_notes }}"
           fi
 
-          # Create enhanced release notes
           RELEASE_NOTES=$(cat <<EOF
           # Release ${{ steps.parse_inputs.outputs.version }}
 
@@ -258,7 +255,11 @@ jobs:
 
           ## What's Changed
 
-          ${CHANGELOG_CONTENT}
+          ### Recent Commits
+          ${COMMITS}
+
+          ${ADDITIONAL_NOTES:+### Additional Notes}
+          ${ADDITIONAL_NOTES}
 
           ---
 
