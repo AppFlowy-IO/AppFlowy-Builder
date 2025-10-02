@@ -338,7 +338,9 @@ jobs:
           curl -L -o app.exe $ASSETS_URL
 
       - name: Install OpenSSL
-        run: choco install openssl -y
+        shell: powershell
+        run: |
+          vcpkg install openssl:x64-windows
 
       - name: Build AppFlowy
         working-directory: frontend
