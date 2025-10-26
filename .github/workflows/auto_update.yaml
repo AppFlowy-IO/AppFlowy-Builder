@@ -354,8 +354,15 @@ jobs:
         working-directory: frontend/appflowy_flutter
         shell: bash
         run: |
-          echo "${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}" > dsa_priv.pem
-          dart run auto_updater:sign_update -f dsa_priv.pem app.exe > edSignature.txt
+          if [ -f dsa_priv.pem ] && [ -s dsa_priv.pem ]; then
+            echo "Using repository dsa_priv.pem"
+          elif [ -n "${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}" ]; then
+            printf "%s" "${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}" > dsa_priv.pem
+          else
+            echo "Missing DSA private key (dsa_priv.pem or WINDOWS_AUTO_UPDATE_PRIVATE_KEY)." >&2
+            exit 1
+          fi
+          dart run auto_updater:sign_update app.exe > edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
