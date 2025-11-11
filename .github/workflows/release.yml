@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g., 0.10.3)"
+        description: "Release version (e.g., 0.10.4)"
         required: true
         type: string
-        default: "0.10.3"
+        default: "0.10.4"
       branch:
         description: "Source branch for build"
         required: true
