@@ -15,7 +15,7 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.10.3"
+        default: "0.10.4"
       arch:
         type: choice
         description: "Build Architecture"
@@ -66,7 +66,7 @@ env:
 
 jobs:
   x86_64:
-    runs-on: macos-13
+    runs-on: macos-latest
 
     if: ${{ inputs.arch == 'All' || inputs.arch == 'x86_64' }}
 
@@ -135,10 +135,24 @@ jobs:
           echo "Rust targets: $(rustup target list --installed)"
 
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          cargo make --profile production-mac-x86_64 appflowy-core-release
+          cargo make --profile production-mac-x86_64 code_generation
+          cd appflowy_flutter
+          arch -x86_64 flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
+          cd ..
+
+          # Copy built app to product directory
+          mkdir -p appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
+          cp -r appflowy_flutter/build/macos/Build/Products/Release/AppFlowy.app appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
           echo "✅ x86_64 build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
+
+      - name: Upload unsigned .app (x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-macos-x86_64-unsigned.app
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app
 
       - name: Codesign AppFlowy
         run: |
@@ -254,7 +268,7 @@ jobs:
             --fail-with-body
 
   aarch64:
-    runs-on: macos-15
+    runs-on: macos-latest
 
     if: ${{ inputs.arch == 'All' || inputs.arch == 'aarch64' }}
 
@@ -323,10 +337,24 @@ jobs:
           echo "Rust targets: $(rustup target list --installed)"
 
           flutter config --enable-macos-desktop
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          cargo make --profile production-mac-arm64 --env APP_VERSION=${{ inputs.build_name }} appflowy
+          cargo make --profile production-mac-arm64 code_generation
+          cd appflowy_flutter
+          arch -arm64 flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
+          cd ..
+
+          # Copy built app to product directory
+          mkdir -p appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
+          cp -r appflowy_flutter/build/macos/Build/Products/Release/AppFlowy.app appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
 
           echo "✅ aarch64 build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
+
+      - name: Upload unsigned .app (aarch64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-macos-aarch64-unsigned.app
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app
 
       - name: Codesign AppFlowy
         run: |
@@ -526,6 +554,12 @@ jobs:
 
           echo "✅ Universal build completed"
           ls -la appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/
+
+      - name: Upload unsigned .app (universal)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-macos-universal-unsigned.app
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app
 
       - name: Codesign AppFlowy
         run: |
