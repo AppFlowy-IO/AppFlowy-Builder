@@ -638,13 +638,20 @@ jobs:
         run: |
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v2
+        with:
+          repository: AppFlowy-IO/AppFlowy-Builder
+          path: builder-repo
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
       - name: Thin Universal App to ARM64
         run: |
           echo "🔪 Thinning Universal app to ARM64..."
           cd ${{ env.MACOS_APP_RELEASE_PATH }}
 
           # Copy thinning script from builder repo
-          cp ${{ github.workspace }}/.github/scripts/thin_app.sh .
+          cp ${{ github.workspace }}/builder-repo/.github/scripts/thin_app.sh .
           chmod +x thin_app.sh
 
           # Thin to ARM64
