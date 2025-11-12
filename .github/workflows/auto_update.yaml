@@ -98,6 +98,8 @@ jobs:
           flutter pub get && flutter packages pub get && cd macos && pod install && cd ..
           echo ${{ secrets.MACOS_AUTO_UPDATE_PRIVATE_KEY }} > PRIVATE_KEY
           dart run auto_updater:sign_update -f PRIVATE_KEY app.dmg > edSignature.txt
+          echo "EdSignature file content:"
+          cat edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
@@ -111,6 +113,10 @@ jobs:
           SIGNATURE=$(grep -o 'sparkle:edSignature="[^"]*"' edSignature.txt | cut -d'"' -f2)
           LENGTH=$(grep -o 'length="[^"]*"' edSignature.txt | cut -d'"' -f2 | tr -d '\n')
           ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-x86_64.dmg
+
+          echo "VERSION: $VERSION"
+          echo "SIGNATURE: $SIGNATURE"
+          echo "LENGTH: $LENGTH"
 
           APPCAST_FILE_NAME="appcast-macos-x86_64.xml"
 
@@ -209,6 +215,8 @@ jobs:
           flutter pub get && flutter packages pub get && cd macos && pod install && cd ..
           echo ${{ secrets.MACOS_AUTO_UPDATE_PRIVATE_KEY }} > PRIVATE_KEY
           dart run auto_updater:sign_update -f PRIVATE_KEY app.dmg > edSignature.txt
+          echo "EdSignature file content:"
+          cat edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
@@ -363,6 +371,8 @@ jobs:
             exit 1
           fi
           dart run auto_updater:sign_update app.exe > edSignature.txt
+          Write-Host "EdSignature file content:"
+          Get-Content edSignature.txt
 
       - name: Generate Appcast.xml
         working-directory: frontend/appflowy_flutter
@@ -378,6 +388,10 @@ jobs:
           $edSignatureContent = Get-Content edSignature.txt -Raw
           $SIGNATURE = if ($edSignatureContent -match 'sparkle:edSignature="([^"]*)"') { $matches[1] } else { "" }
           $LENGTH = if ($edSignatureContent -match 'length="([^"]*)"') { $matches[1] } else { "" }
+
+          Write-Host "VERSION: $VERSION"
+          Write-Host "SIGNATURE: $SIGNATURE"
+          Write-Host "LENGTH: $LENGTH"
 
           $APPCAST_FILE_NAME="appcast-windows-x86_64.xml"
           $PUBDATE = Get-Date -Format "r"
@@ -413,7 +427,7 @@ jobs:
           </rss>
           "@ | Set-Content -Path $APPCAST_FILE_NAME
 
-          Write-Host "Generated $APPCAST_FILE_NAME:"
+          Write-Host "Generated ${APPCAST_FILE_NAME}:"
           Get-Content $APPCAST_FILE_NAME
 
       - name: Upload Appcast files
