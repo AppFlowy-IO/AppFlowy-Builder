@@ -138,7 +138,12 @@ jobs:
           cargo make --profile production-mac-x86_64 appflowy-core-release
           cargo make --profile production-mac-x86_64 code_generation
           cd appflowy_flutter
-          arch -x86_64 flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
+
+          # Set architecture build settings for x86_64
+          export ARCHS=x86_64
+          export ONLY_ACTIVE_ARCH=NO
+
+          flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
           cd ..
 
           # Copy built app to product directory
@@ -340,7 +345,12 @@ jobs:
           cargo make --profile production-mac-arm64 --env APP_VERSION=${{ inputs.build_name }} appflowy
           cargo make --profile production-mac-arm64 code_generation
           cd appflowy_flutter
-          arch -arm64 flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
+
+          # Set architecture build settings for ARM64
+          export ARCHS=arm64
+          export ONLY_ACTIVE_ARCH=NO
+
+          flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
           cd ..
 
           # Copy built app to product directory
