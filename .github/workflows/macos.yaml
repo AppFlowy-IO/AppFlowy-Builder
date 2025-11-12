@@ -141,9 +141,8 @@ jobs:
 
           # Set architecture build settings for x86_64
           export ARCHS=x86_64
-          export ONLY_ACTIVE_ARCH=NO
 
-          flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
+          arch -x86_64 flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
           cd ..
 
           # Copy built app to product directory
@@ -348,9 +347,7 @@ jobs:
 
           # Set architecture build settings for ARM64
           export ARCHS=arm64
-          export ONLY_ACTIVE_ARCH=NO
-
-          flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
+          arch -arm64 flutter build macos --build-name ${{ inputs.build_name }} --split-debug-info=./debug_info --obfuscate
           cd ..
 
           # Copy built app to product directory
