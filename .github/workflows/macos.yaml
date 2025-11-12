@@ -487,8 +487,12 @@ jobs:
 
     env:
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
-      MACOS_AARCH64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal.zip
-      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal
+      MACOS_UNIVERSAL_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal.zip
+      MACOS_UNIVERSAL_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-universal
+      MACOS_ARM64_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-arm64.zip
+      MACOS_ARM64_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-arm64
+      MACOS_X86_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64.zip
+      MACOS_X86_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64
 
     steps:
       - name: Checkout source code
@@ -595,20 +599,20 @@ jobs:
           /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
           echo "✅ Code signing completed"
 
-      - name: Create macOS dmg
+      - name: Create macOS dmg (Universal)
         run: |
           brew install create-dmg
           i=0
-          until [[ -e "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" ]]; do
+          until [[ -e "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg" ]]; do
             create-dmg \
-            --volname ${{ env.MACOS_DMG_NAME }} \
+            --volname ${{ env.MACOS_UNIVERSAL_DMG_NAME }} \
             --hide-extension "AppFlowy.app" \
             --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
             --window-size 600 450 \
             --icon-size 94 \
             --icon "AppFlowy.app" 141 249 \
             --app-drop-link 458 249 \
-            "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
+            "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg" \
             "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" || true
             if [[ $i -eq 10 ]]; then
               echo 'Error: create-dmg did not succeed even after 10 tries.'
@@ -631,44 +635,175 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT;
           fi
 
-      - name: Notarize AppFlowy
+      - name: Notarize AppFlowy (Universal)
         if: ${{ steps.secret-check.outputs.available == 'true' }}
         continue-on-error: true
         run: |
-          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
 
-      - name: Archive Asset
+      - name: Thin Universal App to ARM64
+        run: |
+          echo "🔪 Thinning Universal app to ARM64..."
+          cd ${{ env.MACOS_APP_RELEASE_PATH }}
+
+          # Copy thinning script from builder repo
+          cp ${{ github.workspace }}/.github/scripts/thin_app.sh .
+          chmod +x thin_app.sh
+
+          # Thin to ARM64
+          ./thin_app.sh AppFlowy.app arm64
+          mv arm64.app AppFlowy-arm64.app
+
+          echo "✅ ARM64 app created"
+          ls -la
+
+      - name: Thin Universal App to x86_64
+        run: |
+          echo "🔪 Thinning Universal app to x86_64..."
+          cd ${{ env.MACOS_APP_RELEASE_PATH }}
+
+          # Thin to x86_64
+          ./thin_app.sh AppFlowy.app x86_64
+          mv x86_64.app AppFlowy-x86_64.app
+
+          echo "✅ x86_64 app created"
+          ls -la
+
+      - name: Codesign Thinned Apps
+        run: |
+          if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then
+            echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
+            exit 0
+          fi
+
+          echo "✍️ Code signing thinned apps..."
+
+          # Sign ARM64 app
+          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" -v
+          echo "✅ ARM64 app signed"
+
+          # Sign x86_64 app
+          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" -v
+          echo "✅ x86_64 app signed"
+
+      - name: Create DMG for ARM64
+        run: |
+          cd ${{ env.MACOS_APP_RELEASE_PATH }}
+          i=0
+          until [[ -e "${{ env.MACOS_ARM64_DMG_NAME }}.dmg" ]]; do
+            create-dmg \
+            --volname ${{ env.MACOS_ARM64_DMG_NAME }} \
+            --hide-extension "AppFlowy-arm64.app" \
+            --background ../../../../../scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
+            --window-size 600 450 \
+            --icon-size 94 \
+            --icon "AppFlowy-arm64.app" 141 249 \
+            --app-drop-link 458 249 \
+            "${{ env.MACOS_ARM64_DMG_NAME }}.dmg" \
+            "AppFlowy-arm64.app" || true
+            if [[ $i -eq 10 ]]; then
+              echo 'Error: create-dmg did not succeed even after 10 tries.'
+              exit 1
+            fi
+            i=$((i+1))
+          done
+          echo "✅ ARM64 DMG created"
+
+      - name: Create DMG for x86_64
+        run: |
+          cd ${{ env.MACOS_APP_RELEASE_PATH }}
+          i=0
+          until [[ -e "${{ env.MACOS_X86_DMG_NAME }}.dmg" ]]; do
+            create-dmg \
+            --volname ${{ env.MACOS_X86_DMG_NAME }} \
+            --hide-extension "AppFlowy-x86_64.app" \
+            --background ../../../../../scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
+            --window-size 600 450 \
+            --icon-size 94 \
+            --icon "AppFlowy-x86_64.app" 141 249 \
+            --app-drop-link 458 249 \
+            "${{ env.MACOS_X86_DMG_NAME }}.dmg" \
+            "AppFlowy-x86_64.app" || true
+            if [[ $i -eq 10 ]]; then
+              echo 'Error: create-dmg did not succeed even after 10 tries.'
+              exit 1
+            fi
+            i=$((i+1))
+          done
+          echo "✅ x86_64 DMG created"
+
+      - name: Notarize ARM64 DMG
+        if: ${{ steps.secret-check.outputs.available == 'true' }}
+        continue-on-error: true
+        run: |
+          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+
+      - name: Notarize x86_64 DMG
+        if: ${{ steps.secret-check.outputs.available == 'true' }}
+        continue-on-error: true
+        run: |
+          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+
+      - name: Archive Assets
         working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
-        run: zip --symlinks -qr ${{ env.MACOS_AARCH64_ZIP_NAME }} AppFlowy.app
+        run: |
+          # Archive Universal
+          zip --symlinks -qr ${{ env.MACOS_UNIVERSAL_ZIP_NAME }} AppFlowy.app
 
-      - name: Upload ZIP
+          # Archive ARM64
+          zip --symlinks -qr ${{ env.MACOS_ARM64_ZIP_NAME }} AppFlowy-arm64.app
+
+          # Archive x86_64
+          zip --symlinks -qr ${{ env.MACOS_X86_ZIP_NAME }} AppFlowy-x86_64.app
+
+          echo "✅ All archives created"
+          ls -la *.zip
+
+      - name: Upload Universal ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MACOS_AARCH64_ZIP_NAME }}
-          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_AARCH64_ZIP_NAME }}
+          name: ${{ env.MACOS_UNIVERSAL_ZIP_NAME }}
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_ZIP_NAME }}
 
-      - name: Upload DMG
+      - name: Upload Universal DMG
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MACOS_DMG_NAME }}.dmg
-          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
+          name: ${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg
 
-      - name: Upload ZIP to Release
+      - name: Upload ARM64 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_ARM64_ZIP_NAME }}
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_ZIP_NAME }}
+
+      - name: Upload ARM64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_ARM64_DMG_NAME }}.dmg
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg
+
+      - name: Upload x86_64 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_X86_ZIP_NAME }}
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_ZIP_NAME }}
+
+      - name: Upload x86_64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_X86_DMG_NAME }}.dmg
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg
+
+      - name: Upload Universal ZIP to Release
         if: inputs.upload_url != ''
         run: |
-          filename="${{ env.MACOS_AARCH64_ZIP_NAME }}"
+          filename="${{ env.MACOS_UNIVERSAL_ZIP_NAME }}"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-
-          # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-
-          # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-
           echo "Uploading $filename to release..."
-
-          curl -L \
-            -X POST \
+          curl -L -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Content-Type: application/octet-stream" \
@@ -676,22 +811,79 @@ jobs:
             "${upload_url}?name=${encoded_filename}" \
             --fail-with-body
 
-      - name: Upload DMG to Release
+      - name: Upload Universal DMG to Release
         if: inputs.upload_url != ''
         run: |
-          filename="${{ env.MACOS_DMG_NAME }}.dmg"
+          filename="${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
           filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
-
-          # URL encode the filename
           encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-
-          # Remove the {?name,label} template from upload URL if present
           upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-
           echo "Uploading $filename to release..."
+          curl -L -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
 
-          curl -L \
-            -X POST \
+      - name: Upload ARM64 ZIP to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_ARM64_ZIP_NAME }}"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          echo "Uploading $filename to release..."
+          curl -L -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
+      - name: Upload ARM64 DMG to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_ARM64_DMG_NAME }}.dmg"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          echo "Uploading $filename to release..."
+          curl -L -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
+      - name: Upload x86_64 ZIP to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_X86_ZIP_NAME }}"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          echo "Uploading $filename to release..."
+          curl -L -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$filepath" \
+            "${upload_url}?name=${encoded_filename}" \
+            --fail-with-body
+
+      - name: Upload x86_64 DMG to Release
+        if: inputs.upload_url != ''
+        run: |
+          filename="${{ env.MACOS_X86_DMG_NAME }}.dmg"
+          filepath="${{ env.MACOS_APP_RELEASE_PATH }}/$filename"
+          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
+          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
+          echo "Uploading $filename to release..."
+          curl -L -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Content-Type: application/octet-stream" \
