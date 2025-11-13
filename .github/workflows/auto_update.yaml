@@ -386,8 +386,8 @@ jobs:
           $ASSETS_URL="https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-windows-x86_64.exe"
 
           $edSignatureContent = Get-Content edSignature.txt -Raw
-          $SIGNATURE = if ($edSignatureContent -match 'sparkle:edSignature="([^"]*)"') { $matches[1] } else { "" }
-          $LENGTH = if ($edSignatureContent -match 'length="([^"]*)"') { $matches[1] } else { "" }
+          $SIGNATURE = if ($edSignatureContent -match 'sparkle:dsaSignature="([^"]*)"') { $matches[1] } else { "" }
+          $LENGTH = if ($edSignatureContent -match 'length="([^"]*)"') { $matches[1] } else { "0" }
 
           Write-Host "VERSION: $VERSION"
           Write-Host "SIGNATURE: $SIGNATURE"
@@ -411,7 +411,7 @@ jobs:
                   <language>en</language>
                   <item>
                       <title>Version $RELEASE_VERSION_NUMBER</title>
-                      <sparkle:version>2</sparkle:version>
+                      <sparkle:version>$RELEASE_VERSION_NUMBER</sparkle:version>
                       <sparkle:shortVersionString>$RELEASE_VERSION_NUMBER</sparkle:shortVersionString>
           $criticalUpdateLine
                       <pubDate>$PUBDATE</pubDate>
@@ -419,7 +419,7 @@ jobs:
                           url="$ASSETS_URL"
                           sparkle:os="windows"
                           type="application/octet-stream"
-                          sparkle:edSignature="$SIGNATURE"
+                          sparkle:dsaSignature="$SIGNATURE"
                           length="$LENGTH"
                           />
                   </item>
