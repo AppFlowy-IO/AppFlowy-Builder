@@ -590,7 +590,7 @@ jobs:
             exit 1
           fi
 
-          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+          /usr/bin/codesign --force --options runtime --timestamp --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
           echo "✅ Code signing completed"
 
       - name: Create macOS dmg (Universal)
@@ -633,7 +633,16 @@ jobs:
         if: ${{ steps.secret-check.outputs.available == 'true' }}
         continue-on-error: true
         run: |
+          echo "📝 Submitting universal DMG for notarization..."
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Notarization successful, stapling ticket..."
+            xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
+            echo "✅ Stapling completed"
+          else
+            echo "⚠️ Notarization failed for universal DMG"
+          fi
 
       - name: Checkout Builder Repository
         uses: actions/checkout@v2
@@ -680,11 +689,11 @@ jobs:
           echo "✍️ Code signing thinned apps..."
 
           # Sign ARM64 app
-          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" -v
+          /usr/bin/codesign --force --options runtime --timestamp --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" -v
           echo "✅ ARM64 app signed"
 
           # Sign x86_64 app
-          /usr/bin/codesign --force --options runtime --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" -v
+          /usr/bin/codesign --force --options runtime --timestamp --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" -v
           echo "✅ x86_64 app signed"
 
       - name: Prepare ARM64 app for DMG
@@ -759,13 +768,59 @@ jobs:
         if: ${{ steps.secret-check.outputs.available == 'true' }}
         continue-on-error: true
         run: |
+          echo "📝 Submitting ARM64 DMG for notarization..."
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Notarization successful, stapling ticket..."
+            xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg"
+            echo "✅ Stapling completed"
+          else
+            echo "⚠️ Notarization failed for ARM64 DMG"
+          fi
 
       - name: Notarize x86_64 DMG
         if: ${{ steps.secret-check.outputs.available == 'true' }}
         continue-on-error: true
         run: |
+          echo "📝 Submitting x86_64 DMG for notarization..."
           xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Notarization successful, stapling ticket..."
+            xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg"
+            echo "✅ Stapling completed"
+          else
+            echo "⚠️ Notarization failed for x86_64 DMG"
+          fi
+
+      - name: Verify and Re-notarize Universal DMG
+        if: ${{ steps.secret-check.outputs.available == 'true' }}
+        run: |
+          echo "🔍 Verifying universal DMG stapling..."
+
+          # Check if the DMG is already stapled
+          if xcrun stapler validate "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg" 2>&1 | grep -q "is already signed"; then
+            echo "✅ Universal DMG is already stapled"
+          else
+            echo "⚠️ Universal DMG is not properly stapled"
+            echo "🔄 Re-submitting universal DMG for notarization..."
+
+            # Re-submit for notarization
+            if xcrun notarytool submit "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg" \
+              --apple-id ${{ secrets.MACOS_NOTARY_USER }} \
+              --team-id ${{ secrets.MACOS_TEAM_ID }} \
+              --password ${{ secrets.MACOS_NOTARY_PWD }} \
+              -v -f "json" --wait; then
+
+              echo "✅ Re-notarization successful, stapling ticket..."
+              xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
+              echo "✅ Universal DMG successfully notarized and stapled"
+            else
+              echo "❌ Re-notarization failed for universal DMG"
+              echo "Continuing anyway (will be uploaded but may show Gatekeeper warning)"
+            fi
+          fi
 
       - name: Archive Assets
         working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
