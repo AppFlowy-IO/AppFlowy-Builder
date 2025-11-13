@@ -40,12 +40,9 @@ on:
         description: "macOS architecture"
         required: false
         type: choice
-        default: "universal"
+        default: "All"
         options:
           - "All"
-          - "x86_64"
-          - "aarch64"
-          - "universal"
       internal_build:
         description: "Internal build (1 for internal, 0 for external)"
         required: false
