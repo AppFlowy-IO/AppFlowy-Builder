@@ -170,7 +170,7 @@ jobs:
           cargo make --profile production-ios-arm64 code_generation
 
           cd appflowy_flutter
-          flutter build ipa --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+          flutter build ipa --build-name ${{ inputs.build_name }} --build-number 1 --split-debug-info=./debug_info --obfuscate
       - name: Upload ipa
         uses: actions/upload-artifact@v4
         with:
