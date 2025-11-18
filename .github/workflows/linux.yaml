@@ -121,6 +121,7 @@ jobs:
           sudo apt-get install keybinder-3.0 libnotify-dev libwayland-cursor0 libwayland-client0 libwayland-egl1
           sudo apt-get -y install alien
           sudo apt install libmpv-dev mpv
+          sudo apt install libasound2-dev
           # Install FUSE for AppImage support
           sudo apt-get install -y fuse libfuse2
           source $HOME/.cargo/env
