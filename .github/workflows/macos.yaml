@@ -487,6 +487,7 @@ jobs:
       MACOS_ARM64_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-arm64
       MACOS_X86_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64.zip
       MACOS_X86_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-x86_64
+      MACOS_ENTITLEMENTS_PATH: frontend/appflowy_flutter/macos/Runner/Release.entitlements
 
     steps:
       - name: Checkout source code
@@ -590,7 +591,7 @@ jobs:
             exit 1
           fi
 
-          /usr/bin/codesign --force --options runtime --timestamp --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
+          /usr/bin/codesign --force --options runtime --timestamp --deep --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" -v
           echo "✅ Code signing completed"
 
       - name: Create macOS dmg (Universal)
@@ -689,11 +690,11 @@ jobs:
           echo "✍️ Code signing thinned apps..."
 
           # Sign ARM64 app
-          /usr/bin/codesign --force --options runtime --timestamp --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" -v
+          /usr/bin/codesign --force --options runtime --timestamp --deep --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" -v
           echo "✅ ARM64 app signed"
 
           # Sign x86_64 app
-          /usr/bin/codesign --force --options runtime --timestamp --deep --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" -v
+          /usr/bin/codesign --force --options runtime --timestamp --deep --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" -v
           echo "✅ x86_64 app signed"
 
       - name: Prepare ARM64 app for DMG
