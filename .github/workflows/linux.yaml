@@ -122,6 +122,8 @@ jobs:
           sudo apt-get -y install alien
           sudo apt install libmpv-dev mpv
           sudo apt install libasound2-dev
+          # Install GStreamer for audioplayers_linux
+          sudo apt-get -y install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
           # Install FUSE for AppImage support
           sudo apt-get install -y fuse libfuse2
           source $HOME/.cargo/env
