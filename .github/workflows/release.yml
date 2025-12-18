@@ -1,7 +1,11 @@
 name: Build AppFlowy Application
-run-name: Build ${{ github.event.inputs.branch }}/${{ github.event.inputs.version }} - ${{ github.event.inputs.internal_build }}
+run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.10.7' }} - ${{ github.event.inputs.internal_build || '1' }}
 
 on:
+  schedule:
+    # Daily builds at 8 AM SGT (00:00 UTC) and 4 PM SGT (08:00 UTC)
+    - cron: '0 0 * * *'  # 8 AM SGT
+    - cron: '0 8 * * *'  # 4 PM SGT
   workflow_dispatch:
     inputs:
       version:
@@ -93,6 +97,15 @@ jobs:
             ANDROID_BUILD_TYPE="${{ github.event.inputs.android_build_type }}"
             MACOS_ARCH="${{ github.event.inputs.macos_arch }}"
             INTERNAL_BUILD="${{ github.event.inputs.internal_build }}"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            # Scheduled trigger - build all platforms with default settings
+            VERSION="0.10.7"
+            BRANCH_NAME="main"
+            PLATFORMS="all"
+            ANDROID_BUILD_TYPE="both"
+            MACOS_ARCH="All"
+            INTERNAL_BUILD="1"
+            echo "📅 Scheduled build triggered at $(TZ='Asia/Singapore' date +"%Y-%m-%d %H:%M:%S %Z")"
           else
             # Tag trigger
             TAG_NAME=${GITHUB_REF#refs/tags/}
