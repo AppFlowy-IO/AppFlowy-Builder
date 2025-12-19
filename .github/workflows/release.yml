@@ -105,7 +105,43 @@ jobs:
             ANDROID_BUILD_TYPE="both"
             MACOS_ARCH="All"
             INTERNAL_BUILD="1"
-            echo "📅 Scheduled build triggered at $(TZ='Asia/Singapore' date +"%Y-%m-%d %H:%M:%S %Z")"
+
+            CURRENT_TIME_SGT=$(TZ='Asia/Singapore' date +"%Y-%m-%d %H:%M:%S %Z")
+            echo "📅 Scheduled build triggered at $CURRENT_TIME_SGT"
+
+            # Check if there are new commits since last scheduled build
+            # Scheduled builds run at 8 AM and 4 PM SGT (00:00 and 08:00 UTC)
+            CURRENT_HOUR=$(TZ='Asia/Singapore' date +"%H")
+
+            # Get last commit time from source repository
+            LAST_COMMIT_TIME=$(curl -s \
+              -H "Authorization: token ${{ secrets.PRIVATE_REPO_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/AppFlowy-IO/AppFlowy-Premium/commits/$BRANCH_NAME" \
+              | jq -r '.commit.committer.date')
+
+            if [ -z "$LAST_COMMIT_TIME" ] || [ "$LAST_COMMIT_TIME" == "null" ]; then
+              echo "⚠️ Warning: Could not fetch last commit time, proceeding with build..."
+            else
+              LAST_COMMIT_TIMESTAMP=$(date -u -d "$LAST_COMMIT_TIME" +%s)
+              CURRENT_TIMESTAMP=$(date +%s)
+
+              # Calculate time difference in hours
+              TIME_DIFF_HOURS=$(( ($CURRENT_TIMESTAMP - $LAST_COMMIT_TIMESTAMP) / 3600 ))
+
+              echo "📝 Last commit time: $LAST_COMMIT_TIME"
+              echo "⏱️ Time since last commit: ${TIME_DIFF_HOURS} hours"
+
+              # If last commit is older than 8 hours, skip build
+              # (meaning no new commits since the last scheduled build)
+              if [ $TIME_DIFF_HOURS -ge 8 ]; then
+                echo "✅ No new commits since last scheduled build (${TIME_DIFF_HOURS} hours ago)"
+                echo "⏭️ Skipping build to save resources"
+                exit 0
+              else
+                echo "🆕 Found new commits within last 8 hours, proceeding with build"
+              fi
+            fi
           else
             # Tag trigger
             TAG_NAME=${GITHUB_REF#refs/tags/}
