@@ -76,6 +76,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
+      skip_build: ${{ steps.parse_inputs.outputs.skip_build }}
       version: ${{ steps.parse_inputs.outputs.version }}
       release_tag: ${{ steps.parse_inputs.outputs.release_tag }}
       branch_name: ${{ steps.parse_inputs.outputs.branch_name }}
@@ -137,6 +138,7 @@ jobs:
               if [ $TIME_DIFF_HOURS -ge 8 ]; then
                 echo "✅ No new commits since last scheduled build (${TIME_DIFF_HOURS} hours ago)"
                 echo "⏭️ Skipping build to save resources"
+                echo "skip_build=true" >> $GITHUB_OUTPUT
                 exit 0
               else
                 echo "🆕 Found new commits within last 8 hours, proceeding with build"
@@ -208,6 +210,7 @@ jobs:
           echo "internal_build=$INTERNAL_BUILD" >> $GITHUB_OUTPUT
 
       - name: Validate Branch Exists
+        if: steps.parse_inputs.outputs.skip_build != 'true'
         run: |
           echo "🔍 Checking if branch '${{ steps.parse_inputs.outputs.branch_name }}' exists..."
 
@@ -228,6 +231,7 @@ jobs:
           fi
 
       - name: Check Required Secrets
+        if: steps.parse_inputs.outputs.skip_build != 'true'
         run: |
           echo "🔐 Checking required secrets availability..."
 
@@ -270,6 +274,7 @@ jobs:
           echo "✅ All required secrets are available"
 
       - name: Checkout source code
+        if: steps.parse_inputs.outputs.skip_build != 'true'
         uses: actions/checkout@v3
         with:
           repository: AppFlowy-IO/AppFlowy-Premium
@@ -278,6 +283,7 @@ jobs:
           fetch-depth: 0
 
       - name: Create release notes
+        if: steps.parse_inputs.outputs.skip_build != 'true'
         id: create_release_notes
         run: |
           BUILD_TIME_SGT=$(TZ='Asia/Singapore' date +"%Y-%m-%d %H:%M:%S %Z")
@@ -327,6 +333,7 @@ jobs:
         shell: bash
 
       - name: Create release
+        if: steps.parse_inputs.outputs.skip_build != 'true'
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -339,7 +346,7 @@ jobs:
   build-android-apk:
     name: Build Android APK
     needs: prepare
-    if: (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'android') || contains(needs.prepare.outputs.platforms, 'mobile')) && (needs.prepare.outputs.android_build_type == 'apk' || needs.prepare.outputs.android_build_type == 'both')
+    if: needs.prepare.outputs.skip_build != 'true' && (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'android') || contains(needs.prepare.outputs.platforms, 'mobile')) && (needs.prepare.outputs.android_build_type == 'apk' || needs.prepare.outputs.android_build_type == 'both')
     uses: ./.github/workflows/android.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
@@ -354,7 +361,7 @@ jobs:
   build-android-aab:
     name: Build Android AAB
     needs: prepare
-    if: (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'android') || contains(needs.prepare.outputs.platforms, 'mobile')) && (needs.prepare.outputs.android_build_type == 'appbundle' || needs.prepare.outputs.android_build_type == 'both')
+    if: needs.prepare.outputs.skip_build != 'true' && (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'android') || contains(needs.prepare.outputs.platforms, 'mobile')) && (needs.prepare.outputs.android_build_type == 'appbundle' || needs.prepare.outputs.android_build_type == 'both')
     uses: ./.github/workflows/android.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
@@ -369,7 +376,7 @@ jobs:
   build-ios:
     name: Build iOS
     needs: prepare
-    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'ios') || contains(needs.prepare.outputs.platforms, 'mobile')
+    if: needs.prepare.outputs.skip_build != 'true' && (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'ios') || contains(needs.prepare.outputs.platforms, 'mobile'))
     uses: ./.github/workflows/ios.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
@@ -383,7 +390,7 @@ jobs:
   build-macos:
     name: Build macOS
     needs: prepare
-    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'macos') || contains(needs.prepare.outputs.platforms, 'desktop')
+    if: needs.prepare.outputs.skip_build != 'true' && (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'macos') || contains(needs.prepare.outputs.platforms, 'desktop'))
     uses: ./.github/workflows/macos.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
@@ -397,7 +404,7 @@ jobs:
   build-windows:
     name: Build Windows
     needs: prepare
-    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'windows') || contains(needs.prepare.outputs.platforms, 'desktop')
+    if: needs.prepare.outputs.skip_build != 'true' && (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'windows') || contains(needs.prepare.outputs.platforms, 'desktop'))
     uses: ./.github/workflows/windows.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
@@ -410,7 +417,7 @@ jobs:
   build-linux:
     name: Build Linux
     needs: prepare
-    if: contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'linux') || contains(needs.prepare.outputs.platforms, 'desktop')
+    if: needs.prepare.outputs.skip_build != 'true' && (contains(needs.prepare.outputs.platforms, 'all') || contains(needs.prepare.outputs.platforms, 'linux') || contains(needs.prepare.outputs.platforms, 'desktop'))
     uses: ./.github/workflows/linux.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
@@ -450,7 +457,7 @@ jobs:
         build-windows,
         build-linux,
       ]
-    if: success()
+    if: success() && needs.prepare.outputs.skip_build != 'true'
     steps:
       - uses: 8398a7/action-slack@v3
         with:
