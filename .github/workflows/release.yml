@@ -12,7 +12,7 @@ on:
         description: "Release version (e.g., 0.10.7)"
         required: true
         type: string
-        default: "0.10.7"
+        default: "0.10.8"
       branch:
         description: "Source branch for build"
         required: true
