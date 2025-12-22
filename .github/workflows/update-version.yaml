@@ -25,37 +25,48 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      workflows: write
+      pull-requests: write
     steps:
       - name: Checkout Builder Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
       - name: Fetch pubspec.yaml from AppFlowy Premium
         id: fetch_version
         run: |
+          set -euo pipefail
           echo "📥 Fetching pubspec.yaml from ${{ inputs.repo }}/${{ inputs.branch }}"
 
           # Fetch the pubspec.yaml file from the source repository
-          curl -s \
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o pubspec.yaml \
             -H "Authorization: token ${{ secrets.PRIVATE_REPO_TOKEN }}" \
             -H "Accept: application/vnd.github.v3.raw" \
-            "https://api.github.com/repos/${{ inputs.repo }}/contents/frontend/appflowy_flutter/pubspec.yaml?ref=${{ inputs.branch }}" \
-            -o pubspec.yaml
+            "https://api.github.com/repos/${{ inputs.repo }}/contents/frontend/appflowy_flutter/pubspec.yaml?ref=${{ inputs.branch }}")
 
-          if [ ! -f pubspec.yaml ]; then
-            echo "❌ Failed to fetch pubspec.yaml"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Failed to fetch pubspec.yaml (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+          if [ ! -f pubspec.yaml ] || [ ! -s pubspec.yaml ]; then
+            echo "❌ pubspec.yaml is missing or empty"
             exit 1
           fi
 
           # Extract version from pubspec.yaml
           # Format: version: X.Y.Z+build_number
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *\([0-9.]*\).*/\1/')
+          VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
 
           if [ -z "$VERSION" ]; then
             echo "❌ Failed to extract version from pubspec.yaml"
             cat pubspec.yaml
+            exit 1
+          fi
+
+          # Validate version format (X.Y.Z)
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "❌ Invalid version format: $VERSION (expected X.Y.Z)"
             exit 1
           fi
 
@@ -65,6 +76,12 @@ jobs:
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
           PATCH=$(echo $VERSION | cut -d. -f3)
+
+          # Validate version components are numbers
+          if ! [[ "$MAJOR" =~ ^[0-9]+$ ]] || ! [[ "$MINOR" =~ ^[0-9]+$ ]] || ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
+            echo "❌ Invalid version components: major=$MAJOR, minor=$MINOR, patch=$PATCH"
+            exit 1
+          fi
 
           echo "🔢 Version components: major=$MAJOR, minor=$MINOR, patch=$PATCH"
 
@@ -84,6 +101,7 @@ jobs:
       - name: Update Workflow Files
         id: update_files
         run: |
+          set -euo pipefail
           VERSION="${{ steps.fetch_version.outputs.version }}"
           ANDROID_BUILD_NUMBER="${{ steps.fetch_version.outputs.android_build_number }}"
 
@@ -107,6 +125,11 @@ jobs:
             exit 1
           fi
 
+          # Validate current version format
+          if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "⚠️ Warning: Current version has unexpected format: $CURRENT_VERSION"
+          fi
+
           echo "📋 Current version: $CURRENT_VERSION"
           echo "📋 New version: $VERSION"
 
@@ -119,8 +142,7 @@ jobs:
               if [ -f "$file" ]; then
                 echo "  Updating $file..."
                 # Use sed with literal string replacement
-                sed -i.bak "s/default: \"$CURRENT_VERSION\"/default: \"$VERSION\"/g" "$file"
-                rm "$file.bak" 2>/dev/null || true
+                sed -i "s/default: \"$CURRENT_VERSION\"/default: \"$VERSION\"/g" "$file"
               fi
             done
           fi
@@ -140,8 +162,7 @@ jobs:
           if [ "$CURRENT_ANDROID_BUILD" == "$ANDROID_BUILD_NUMBER" ]; then
             echo "ℹ️ Android build number is already $ANDROID_BUILD_NUMBER, no update needed"
           else
-            sed -i.bak "s/default: \"$CURRENT_ANDROID_BUILD\"/default: \"$ANDROID_BUILD_NUMBER\"/" .github/workflows/android.yaml
-            rm .github/workflows/android.yaml.bak 2>/dev/null || true
+            sed -i "s/default: \"$CURRENT_ANDROID_BUILD\"/default: \"$ANDROID_BUILD_NUMBER\"/" .github/workflows/android.yaml
           fi
 
           echo "✅ All files updated successfully"
@@ -170,7 +191,7 @@ jobs:
         if: steps.check_changes.outputs.has_changes == 'true' && inputs.create_pr == true
         uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.BUILDER_GITHUB_TOKEN }}
           commit-message: |
             chore: update version to ${{ steps.fetch_version.outputs.version }}
 
