@@ -133,15 +133,16 @@ jobs:
               echo "📝 Last commit time: $LAST_COMMIT_TIME"
               echo "⏱️ Time since last commit: ${TIME_DIFF_HOURS} hours"
 
-              # If last commit is older than 8 hours, skip build
-              # (meaning no new commits since the last scheduled build)
-              if [ $TIME_DIFF_HOURS -ge 8 ]; then
-                echo "✅ No new commits since last scheduled build (${TIME_DIFF_HOURS} hours ago)"
+              # If last commit is older than 12 hours, skip build
+              # This ensures we catch commits made after the previous scheduled build
+              # (builds run every 8 hours, so 12-hour window provides overlap)
+              if [ $TIME_DIFF_HOURS -ge 12 ]; then
+                echo "✅ No new commits in the last 12 hours (last commit: ${TIME_DIFF_HOURS} hours ago)"
                 echo "⏭️ Skipping build to save resources"
                 echo "skip_build=true" >> $GITHUB_OUTPUT
                 exit 0
               else
-                echo "🆕 Found new commits within last 8 hours, proceeding with build"
+                echo "🆕 Found new commits within last 12 hours, proceeding with build"
               fi
             fi
           else
