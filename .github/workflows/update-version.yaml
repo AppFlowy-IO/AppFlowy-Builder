@@ -1,0 +1,214 @@
+name: Update Version from AppFlowy Premium
+run-name: Update version from ${{ github.event.inputs.repo }}/${{ github.event.inputs.branch }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Source repository for version"
+        required: true
+        default: "AppFlowy-IO/AppFlowy-Premium"
+        type: string
+      branch:
+        description: "Source branch for version"
+        required: true
+        default: "main"
+        type: string
+      create_pr:
+        description: "Create a pull request with the changes"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Builder Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch pubspec.yaml from AppFlowy Premium
+        id: fetch_version
+        run: |
+          echo "📥 Fetching pubspec.yaml from ${{ inputs.repo }}/${{ inputs.branch }}"
+
+          # Fetch the pubspec.yaml file from the source repository
+          curl -s \
+            -H "Authorization: token ${{ secrets.PRIVATE_REPO_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3.raw" \
+            "https://api.github.com/repos/${{ inputs.repo }}/contents/frontend/appflowy_flutter/pubspec.yaml?ref=${{ inputs.branch }}" \
+            -o pubspec.yaml
+
+          if [ ! -f pubspec.yaml ]; then
+            echo "❌ Failed to fetch pubspec.yaml"
+            exit 1
+          fi
+
+          # Extract version from pubspec.yaml
+          # Format: version: X.Y.Z+build_number
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *\([0-9.]*\).*/\1/')
+
+          if [ -z "$VERSION" ]; then
+            echo "❌ Failed to extract version from pubspec.yaml"
+            cat pubspec.yaml
+            exit 1
+          fi
+
+          echo "📦 Extracted version: $VERSION"
+
+          # Parse version components (X.Y.Z)
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+
+          echo "🔢 Version components: major=$MAJOR, minor=$MINOR, patch=$PATCH"
+
+          # Calculate Android build number: 29[minor][patch]01
+          # Format: 29 + (minor padded to 2 digits) + (patch padded to 2 digits) + 01
+          ANDROID_BUILD_NUMBER=$(printf "29%02d%02d01" $MINOR $PATCH)
+
+          echo "📱 Android build number: $ANDROID_BUILD_NUMBER"
+
+          # Save outputs
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "android_build_number=$ANDROID_BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+          # Clean up
+          rm pubspec.yaml
+
+      - name: Update Workflow Files
+        id: update_files
+        run: |
+          VERSION="${{ steps.fetch_version.outputs.version }}"
+          ANDROID_BUILD_NUMBER="${{ steps.fetch_version.outputs.android_build_number }}"
+
+          echo "🔄 Updating workflow files with version $VERSION and Android build number $ANDROID_BUILD_NUMBER"
+
+          # Create a list of files to update
+          FILES=(
+            ".github/workflows/android.yaml"
+            ".github/workflows/ios.yaml"
+            ".github/workflows/macos.yaml"
+            ".github/workflows/windows.yaml"
+            ".github/workflows/linux.yaml"
+            ".github/workflows/release.yml"
+          )
+
+          # Escape dots for sed regex
+          VERSION_ESCAPED=$(echo "$VERSION" | sed 's/\./\\./g')
+
+          # Find current version from android.yaml
+          CURRENT_VERSION=$(grep 'default: ".*"' .github/workflows/android.yaml | grep 'build_name' -A 3 | grep 'default:' | head -1 | sed 's/.*default: "\(.*\)"/\1/')
+          CURRENT_VERSION_ESCAPED=$(echo "$CURRENT_VERSION" | sed 's/\./\\./g')
+
+          echo "📋 Current version: $CURRENT_VERSION"
+          echo "📋 New version: $VERSION"
+
+          # Update version in all workflow files
+          for file in "${FILES[@]}"; do
+            if [ -f "$file" ]; then
+              echo "  Updating $file..."
+              # Use a more robust sed command with backup
+              sed -i.bak "s/$CURRENT_VERSION_ESCAPED/$VERSION_ESCAPED/g" "$file"
+              rm "$file.bak" 2>/dev/null || true
+            fi
+          done
+
+          # Update Android build number specifically in android.yaml
+          echo "📱 Updating Android build number in android.yaml..."
+          CURRENT_ANDROID_BUILD=$(grep 'build_number:' -A 3 .github/workflows/android.yaml | grep 'default:' | head -1 | sed 's/.*default: "\(.*\)"/\1/')
+          echo "  Current Android build number: $CURRENT_ANDROID_BUILD"
+          echo "  New Android build number: $ANDROID_BUILD_NUMBER"
+
+          sed -i.bak "s/default: \"$CURRENT_ANDROID_BUILD\"/default: \"$ANDROID_BUILD_NUMBER\"/" .github/workflows/android.yaml
+          rm .github/workflows/android.yaml.bak 2>/dev/null || true
+
+          echo "✅ All files updated successfully"
+
+      - name: Check for Changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "ℹ️ No changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Changes detected"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo ""
+            echo "📝 Changed files:"
+            git diff --name-only
+          fi
+
+      - name: Show Diff
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          echo "📊 Diff of changes:"
+          git diff
+
+      - name: Create Pull Request
+        if: steps.check_changes.outputs.has_changes == 'true' && inputs.create_pr == true
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            chore: update version to ${{ steps.fetch_version.outputs.version }}
+
+            - Update all workflow files to version ${{ steps.fetch_version.outputs.version }}
+            - Update Android build number to ${{ steps.fetch_version.outputs.android_build_number }}
+
+            Source: ${{ inputs.repo }}@${{ inputs.branch }}
+          branch: update-version-${{ steps.fetch_version.outputs.version }}
+          delete-branch: true
+          title: "Update version to ${{ steps.fetch_version.outputs.version }}"
+          body: |
+            ## Version Update
+
+            This PR updates the version across all workflow files.
+
+            - **New Version:** `${{ steps.fetch_version.outputs.version }}`
+            - **Android Build Number:** `${{ steps.fetch_version.outputs.android_build_number }}`
+            - **Source Repository:** `${{ inputs.repo }}`
+            - **Source Branch:** `${{ inputs.branch }}`
+
+            ### Changed Files
+            - `.github/workflows/android.yaml`
+            - `.github/workflows/ios.yaml`
+            - `.github/workflows/macos.yaml`
+            - `.github/workflows/windows.yaml`
+            - `.github/workflows/linux.yaml`
+            - `.github/workflows/release.yml`
+
+            ### Android Build Number Calculation
+            The Android build number follows the pattern: `29[minor][patch]01`
+            - For version `${{ steps.fetch_version.outputs.version }}`: `${{ steps.fetch_version.outputs.android_build_number }}`
+
+      - name: Commit Changes Directly
+        if: steps.check_changes.outputs.has_changes == 'true' && inputs.create_pr == false
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/*.yaml .github/workflows/*.yml
+          git commit -m "chore: update version to ${{ steps.fetch_version.outputs.version }}
+
+          - Update all workflow files to version ${{ steps.fetch_version.outputs.version }}
+          - Update Android build number to ${{ steps.fetch_version.outputs.android_build_number }}
+
+          Source: ${{ inputs.repo }}@${{ inputs.branch }}"
+          git push
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 📊 Version Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ steps.fetch_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Android Build Number:** ${{ steps.fetch_version.outputs.android_build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Source:** ${{ inputs.repo }}@${{ inputs.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Changes Detected:** ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.create_pr }}" == "true" ]; then
+            echo "- **Action:** Pull request created" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Action:** Changes committed directly" >> $GITHUB_STEP_SUMMARY
+          fi
