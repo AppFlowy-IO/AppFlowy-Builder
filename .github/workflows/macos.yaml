@@ -632,17 +632,34 @@ jobs:
 
       - name: Notarize AppFlowy (Universal)
         if: ${{ steps.secret-check.outputs.available == 'true' }}
-        continue-on-error: true
         run: |
           echo "📝 Submitting universal DMG for notarization..."
-          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          SUCCESS=false
 
-          if [ $? -eq 0 ]; then
-            echo "✅ Notarization successful, stapling ticket..."
-            xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
-            echo "✅ Stapling completed"
-          else
-            echo "⚠️ Notarization failed for universal DMG"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "🔄 Attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+            if xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait; then
+              echo "✅ Notarization successful, stapling ticket..."
+              xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
+              echo "✅ Stapling completed"
+              SUCCESS=true
+              break
+            else
+              echo "⚠️ Attempt $RETRY_COUNT failed"
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⏳ Waiting 10 seconds before retry..."
+                sleep 10
+              fi
+            fi
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "❌ Notarization failed for universal DMG after $MAX_RETRIES attempts"
+            exit 1
           fi
 
       - name: Checkout Builder Repository
@@ -767,32 +784,158 @@ jobs:
 
       - name: Notarize ARM64 DMG
         if: ${{ steps.secret-check.outputs.available == 'true' }}
-        continue-on-error: true
         run: |
           echo "📝 Submitting ARM64 DMG for notarization..."
-          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          SUCCESS=false
 
-          if [ $? -eq 0 ]; then
-            echo "✅ Notarization successful, stapling ticket..."
-            xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg"
-            echo "✅ Stapling completed"
-          else
-            echo "⚠️ Notarization failed for ARM64 DMG"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "🔄 Attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+            if xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait; then
+              echo "✅ Notarization successful, stapling ticket..."
+              xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg"
+              echo "✅ Stapling completed"
+              SUCCESS=true
+              break
+            else
+              echo "⚠️ Attempt $RETRY_COUNT failed"
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⏳ Waiting 10 seconds before retry..."
+                sleep 10
+              fi
+            fi
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "❌ Notarization failed for ARM64 DMG after $MAX_RETRIES attempts"
+            exit 1
           fi
 
       - name: Notarize x86_64 DMG
         if: ${{ steps.secret-check.outputs.available == 'true' }}
-        continue-on-error: true
         run: |
           echo "📝 Submitting x86_64 DMG for notarization..."
-          xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          SUCCESS=false
 
-          if [ $? -eq 0 ]; then
-            echo "✅ Notarization successful, stapling ticket..."
-            xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg"
-            echo "✅ Stapling completed"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "🔄 Attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+            if xcrun notarytool submit ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg --apple-id ${{ secrets.MACOS_NOTARY_USER }} --team-id ${{ secrets.MACOS_TEAM_ID }} --password ${{ secrets.MACOS_NOTARY_PWD }} -v -f "json" --wait; then
+              echo "✅ Notarization successful, stapling ticket..."
+              xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg"
+              echo "✅ Stapling completed"
+              SUCCESS=true
+              break
+            else
+              echo "⚠️ Attempt $RETRY_COUNT failed"
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⏳ Waiting 10 seconds before retry..."
+                sleep 10
+              fi
+            fi
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "❌ Notarization failed for x86_64 DMG after $MAX_RETRIES attempts"
+            exit 1
+          fi
+
+      - name: Verify ARM64 DMG
+        if: ${{ steps.secret-check.outputs.available == 'true' }}
+        run: |
+          echo "🔍 Verifying ARM64 DMG stapling..."
+
+          # Check if the DMG is already stapled
+          if xcrun stapler validate "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg" 2>&1 | grep -q "is already signed"; then
+            echo "✅ ARM64 DMG is already stapled"
           else
-            echo "⚠️ Notarization failed for x86_64 DMG"
+            echo "⚠️ ARM64 DMG is not properly stapled"
+            echo "🔄 Re-submitting ARM64 DMG for notarization..."
+
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            SUCCESS=false
+
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "🔄 Re-notarization attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+              if xcrun notarytool submit "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg" \
+                --apple-id ${{ secrets.MACOS_NOTARY_USER }} \
+                --team-id ${{ secrets.MACOS_TEAM_ID }} \
+                --password ${{ secrets.MACOS_NOTARY_PWD }} \
+                -v -f "json" --wait; then
+
+                echo "✅ Re-notarization successful, stapling ticket..."
+                xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ARM64_DMG_NAME }}.dmg"
+                echo "✅ ARM64 DMG successfully notarized and stapled"
+                SUCCESS=true
+                break
+              else
+                echo "⚠️ Re-notarization attempt $RETRY_COUNT failed"
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "⏳ Waiting 10 seconds before retry..."
+                  sleep 10
+                fi
+              fi
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "❌ Re-notarization failed for ARM64 DMG after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          fi
+
+      - name: Verify x86_64 DMG
+        if: ${{ steps.secret-check.outputs.available == 'true' }}
+        run: |
+          echo "🔍 Verifying x86_64 DMG stapling..."
+
+          # Check if the DMG is already stapled
+          if xcrun stapler validate "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg" 2>&1 | grep -q "is already signed"; then
+            echo "✅ x86_64 DMG is already stapled"
+          else
+            echo "⚠️ x86_64 DMG is not properly stapled"
+            echo "🔄 Re-submitting x86_64 DMG for notarization..."
+
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            SUCCESS=false
+
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "🔄 Re-notarization attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+              if xcrun notarytool submit "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg" \
+                --apple-id ${{ secrets.MACOS_NOTARY_USER }} \
+                --team-id ${{ secrets.MACOS_TEAM_ID }} \
+                --password ${{ secrets.MACOS_NOTARY_PWD }} \
+                -v -f "json" --wait; then
+
+                echo "✅ Re-notarization successful, stapling ticket..."
+                xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_X86_DMG_NAME }}.dmg"
+                echo "✅ x86_64 DMG successfully notarized and stapled"
+                SUCCESS=true
+                break
+              else
+                echo "⚠️ Re-notarization attempt $RETRY_COUNT failed"
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "⏳ Waiting 10 seconds before retry..."
+                  sleep 10
+                fi
+              fi
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "❌ Re-notarization failed for x86_64 DMG after $MAX_RETRIES attempts"
+              exit 1
+            fi
           fi
 
       - name: Verify and Re-notarize Universal DMG
@@ -807,19 +950,37 @@ jobs:
             echo "⚠️ Universal DMG is not properly stapled"
             echo "🔄 Re-submitting universal DMG for notarization..."
 
-            # Re-submit for notarization
-            if xcrun notarytool submit "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg" \
-              --apple-id ${{ secrets.MACOS_NOTARY_USER }} \
-              --team-id ${{ secrets.MACOS_TEAM_ID }} \
-              --password ${{ secrets.MACOS_NOTARY_PWD }} \
-              -v -f "json" --wait; then
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            SUCCESS=false
 
-              echo "✅ Re-notarization successful, stapling ticket..."
-              xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
-              echo "✅ Universal DMG successfully notarized and stapled"
-            else
-              echo "❌ Re-notarization failed for universal DMG"
-              echo "Continuing anyway (will be uploaded but may show Gatekeeper warning)"
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "🔄 Re-notarization attempt $RETRY_COUNT of $MAX_RETRIES..."
+
+              if xcrun notarytool submit "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg" \
+                --apple-id ${{ secrets.MACOS_NOTARY_USER }} \
+                --team-id ${{ secrets.MACOS_TEAM_ID }} \
+                --password ${{ secrets.MACOS_NOTARY_PWD }} \
+                -v -f "json" --wait; then
+
+                echo "✅ Re-notarization successful, stapling ticket..."
+                xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_UNIVERSAL_DMG_NAME }}.dmg"
+                echo "✅ Universal DMG successfully notarized and stapled"
+                SUCCESS=true
+                break
+              else
+                echo "⚠️ Re-notarization attempt $RETRY_COUNT failed"
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "⏳ Waiting 10 seconds before retry..."
+                  sleep 10
+                fi
+              fi
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "❌ Re-notarization failed for universal DMG after $MAX_RETRIES attempts"
+              exit 1
             fi
           fi
 
