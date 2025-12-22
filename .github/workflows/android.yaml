@@ -15,11 +15,11 @@ on:
       build_name:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
-        default: "0.10.7"
+        default: "0.10.8"
       build_number:
         description: "Build Number (it should be unique)"
         required: true
-        default: "2910401"
+        default: "29100801"
       build_type:
         type: choice
         description: "Build Type"
