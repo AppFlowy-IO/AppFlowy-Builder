@@ -23,6 +23,9 @@ on:
 jobs:
   update-version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      workflows: write
     steps:
       - name: Checkout Builder Repository
         uses: actions/checkout@v4
