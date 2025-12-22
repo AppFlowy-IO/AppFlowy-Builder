@@ -96,34 +96,50 @@ jobs:
             ".github/workflows/release.yml"
           )
 
-          # Escape dots for sed regex
-          VERSION_ESCAPED=$(echo "$VERSION" | sed 's/\./\\./g')
+          # Find current version from android.yaml using awk
+          CURRENT_VERSION=$(awk '/build_name:/{flag=1; next} flag && /default:/{print $2; exit}' .github/workflows/android.yaml | tr -d '"')
 
-          # Find current version from android.yaml
-          CURRENT_VERSION=$(grep 'default: ".*"' .github/workflows/android.yaml | grep 'build_name' -A 3 | grep 'default:' | head -1 | sed 's/.*default: "\(.*\)"/\1/')
-          CURRENT_VERSION_ESCAPED=$(echo "$CURRENT_VERSION" | sed 's/\./\\./g')
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "❌ Error: Could not extract current version from android.yaml"
+            exit 1
+          fi
 
           echo "📋 Current version: $CURRENT_VERSION"
           echo "📋 New version: $VERSION"
 
-          # Update version in all workflow files
-          for file in "${FILES[@]}"; do
-            if [ -f "$file" ]; then
-              echo "  Updating $file..."
-              # Use a more robust sed command with backup
-              sed -i.bak "s/$CURRENT_VERSION_ESCAPED/$VERSION_ESCAPED/g" "$file"
-              rm "$file.bak" 2>/dev/null || true
-            fi
-          done
+          # Check if versions are the same
+          if [ "$CURRENT_VERSION" == "$VERSION" ]; then
+            echo "ℹ️ Version is already $VERSION, no update needed"
+          else
+            # Update version in all workflow files
+            for file in "${FILES[@]}"; do
+              if [ -f "$file" ]; then
+                echo "  Updating $file..."
+                # Use sed with literal string replacement
+                sed -i.bak "s/default: \"$CURRENT_VERSION\"/default: \"$VERSION\"/g" "$file"
+                rm "$file.bak" 2>/dev/null || true
+              fi
+            done
+          fi
 
           # Update Android build number specifically in android.yaml
           echo "📱 Updating Android build number in android.yaml..."
-          CURRENT_ANDROID_BUILD=$(grep 'build_number:' -A 3 .github/workflows/android.yaml | grep 'default:' | head -1 | sed 's/.*default: "\(.*\)"/\1/')
+          CURRENT_ANDROID_BUILD=$(awk '/build_number:/{flag=1; next} flag && /default:/{print $2; exit}' .github/workflows/android.yaml | tr -d '"')
+
+          if [ -z "$CURRENT_ANDROID_BUILD" ]; then
+            echo "❌ Error: Could not extract current Android build number"
+            exit 1
+          fi
+
           echo "  Current Android build number: $CURRENT_ANDROID_BUILD"
           echo "  New Android build number: $ANDROID_BUILD_NUMBER"
 
-          sed -i.bak "s/default: \"$CURRENT_ANDROID_BUILD\"/default: \"$ANDROID_BUILD_NUMBER\"/" .github/workflows/android.yaml
-          rm .github/workflows/android.yaml.bak 2>/dev/null || true
+          if [ "$CURRENT_ANDROID_BUILD" == "$ANDROID_BUILD_NUMBER" ]; then
+            echo "ℹ️ Android build number is already $ANDROID_BUILD_NUMBER, no update needed"
+          else
+            sed -i.bak "s/default: \"$CURRENT_ANDROID_BUILD\"/default: \"$ANDROID_BUILD_NUMBER\"/" .github/workflows/android.yaml
+            rm .github/workflows/android.yaml.bak 2>/dev/null || true
+          fi
 
           echo "✅ All files updated successfully"
 
