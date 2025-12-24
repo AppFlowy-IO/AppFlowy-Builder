@@ -145,6 +145,15 @@ jobs:
                 sed -i "s/default: \"$CURRENT_VERSION\"/default: \"$VERSION\"/g" "$file"
               fi
             done
+
+            # Update hardcoded values in release.yml
+            if [ -f ".github/workflows/release.yml" ]; then
+              echo "  Updating hardcoded values in release.yml..."
+              # Update run-name fallback value
+              sed -i "s/\${{ github.event.inputs.version || '$CURRENT_VERSION' }}/\${{ github.event.inputs.version || '$VERSION' }}/g" .github/workflows/release.yml
+              # Update scheduled trigger VERSION
+              sed -i "s/VERSION=\"$CURRENT_VERSION\"/VERSION=\"$VERSION\"/g" .github/workflows/release.yml
+            fi
           fi
 
           # Update Android build number specifically in android.yaml

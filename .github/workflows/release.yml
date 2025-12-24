@@ -1,5 +1,5 @@
 name: Build AppFlowy Application
-run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.10.7' }} - ${{ github.event.inputs.internal_build || '1' }}
+run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.10.8' }} - ${{ github.event.inputs.internal_build || '1' }}
 
 on:
   schedule:
@@ -100,7 +100,7 @@ jobs:
             INTERNAL_BUILD="${{ github.event.inputs.internal_build }}"
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             # Scheduled trigger - build all platforms with default settings
-            VERSION="0.10.7"
+            VERSION="0.10.8"
             BRANCH_NAME="main"
             PLATFORMS="all"
             ANDROID_BUILD_TYPE="both"
