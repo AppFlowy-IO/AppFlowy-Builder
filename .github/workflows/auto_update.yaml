@@ -523,3 +523,60 @@ jobs:
             frontend/appflowy_flutter/appcast-linux-x86_64.xml
           if-no-files-found: error
           compression-level: 0
+
+  update-release-version:
+    runs-on: ubuntu-latest
+    needs: [macos-x86_64, macos-arm64, windows-x86_64, linux-x86_64]
+    if: always() && (needs.macos-x86_64.result == 'success' || needs.macos-arm64.result == 'success' || needs.windows-x86_64.result == 'success' || needs.linux-x86_64.result == 'success')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get version from workflow input
+        id: get_version
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let version = '${{ github.event.inputs.appflowyVersion }}';
+
+            // If no version was specified, get the latest release
+            if (!version) {
+              const release = await github.rest.repos.getLatestRelease({
+                owner: '${{ github.event.inputs.repoOwner }}',
+                repo: '${{ github.event.inputs.repoName }}'
+              });
+              version = release.data.tag_name;
+            }
+
+            core.setOutput('version', version);
+            console.log(`Version to update: ${version}`);
+
+      - name: Update release.yml with new version
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          echo "Updating release.yml with version: $VERSION"
+
+          # Update run-name default version (line 2)
+          sed -i "s/github.event.inputs.version || '[^']*'/github.event.inputs.version || '$VERSION'/" .github/workflows/release.yml
+
+          # Update version input default (line 15)
+          sed -i "/description: \"Release version/,/default:/ s/default: \"[^\"]*\"/default: \"$VERSION\"/" .github/workflows/release.yml
+
+          # Update scheduled build VERSION (line 103)
+          sed -i "s/VERSION=\"[0-9][0-9.]*\"/VERSION=\"$VERSION\"/" .github/workflows/release.yml
+
+          echo "Updated release.yml"
+          echo "Showing changes:"
+          git diff .github/workflows/release.yml
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/release.yml
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
+            git push
+          fi
