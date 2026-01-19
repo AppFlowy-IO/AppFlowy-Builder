@@ -115,6 +115,7 @@ jobs:
         run: |
           flutter config --enable-windows-desktop
           dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . ${{ inputs.build_name }}
+          cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 code_generation
           cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
           dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
 
