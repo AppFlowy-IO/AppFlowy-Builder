@@ -106,6 +106,7 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: true
         run: |
           git config --global credential.helper store
+          git config --system core.longpaths true
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
           git config --global url."https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
