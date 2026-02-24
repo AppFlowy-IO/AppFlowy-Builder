@@ -698,6 +698,7 @@ jobs:
           ls -la
 
       - name: Codesign Thinned Apps
+        timeout-minutes: 10
         run: |
           if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then
             echo "⚠️ Skipping code signing - MACOS_CERTIFICATE_BASE64 not set"
@@ -706,13 +707,47 @@ jobs:
 
           echo "✍️ Code signing thinned apps..."
 
-          # Sign ARM64 app
-          /usr/bin/codesign --force --options runtime --timestamp --deep --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" -v
-          echo "✅ ARM64 app signed"
+          sign_with_retry() {
+            local app_path="$1"
+            local app_label="$2"
+            local max_retries=3
+            local attempt=1
+            local timeout_seconds=600
 
-          # Sign x86_64 app
-          /usr/bin/codesign --force --options runtime --timestamp --deep --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" --sign "${{ secrets.MACOS_CODESIGN_ID }}" "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" -v
-          echo "✅ x86_64 app signed"
+            if [ ! -d "$app_path" ]; then
+              echo "❌ [$app_label] app not found: $app_path"
+              return 1
+            fi
+
+            while [ "$attempt" -le "$max_retries" ]; do
+              echo "🔄 [$app_label] Codesign attempt $attempt/$max_retries"
+
+              # Keychain may auto-lock during long builds. Unlock before each signing attempt.
+              security unlock-keychain -p action build.keychain || true
+
+              if perl -e 'alarm shift; exec @ARGV' "$timeout_seconds" \
+                /usr/bin/codesign --force --options runtime --timestamp --deep \
+                --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" \
+                --sign "${{ secrets.MACOS_CODESIGN_ID }}" \
+                "$app_path" -v; then
+                /usr/bin/codesign --verify --strict --deep -v "$app_path"
+                echo "✅ [$app_label] app signed and verified"
+                return 0
+              fi
+
+              if [ "$attempt" -lt "$max_retries" ]; then
+                echo "⚠️ [$app_label] codesign failed or timed out, retrying in 15s..."
+                sleep 15
+              fi
+              attempt=$((attempt + 1))
+            done
+
+            echo "❌ [$app_label] codesign failed after $max_retries attempts"
+            return 1
+          }
+
+          sign_with_retry "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-arm64.app" "ARM64"
+          sign_with_retry "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy-x86_64.app" "x86_64"
 
       - name: Prepare ARM64 app for DMG
         run: |
