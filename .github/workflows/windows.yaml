@@ -120,6 +120,12 @@ jobs:
           cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
           dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
 
+      - name: Copy Visual C++ redistributables
+        run: |
+          Copy-Item "C:\Windows\System32\msvcp140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\"
+          Copy-Item "C:\Windows\System32\vcruntime140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\"
+          Copy-Item "C:\Windows\System32\vcruntime140_1.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\"
+
       - name: Archive Asset
         uses: vimtor/action-zip@v1
         with:
