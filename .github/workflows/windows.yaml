@@ -122,9 +122,9 @@ jobs:
 
       - name: Copy Visual C++ redistributables
         run: |
-          Copy-Item "C:\Windows\System32\msvcp140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\"
-          Copy-Item "C:\Windows\System32\vcruntime140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\"
-          Copy-Item "C:\Windows\System32\vcruntime140_1.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\"
+          Copy-Item "C:\Windows\System32\msvcp140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"
+          Copy-Item "C:\Windows\System32\vcruntime140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"
+          Copy-Item "C:\Windows\System32\vcruntime140_1.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"
 
       - name: Archive Asset
         uses: vimtor/action-zip@v1
