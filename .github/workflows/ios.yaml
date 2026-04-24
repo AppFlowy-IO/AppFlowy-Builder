@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [macos-14]
+        os: [macos-26-intel]
         include:
           - target: aarch64-apple-ios
     runs-on: ${{ matrix.os }}
@@ -81,6 +81,33 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Verify Xcode and iOS SDK version
+        run: |
+          set -euo pipefail
+
+          xcodebuild -version
+          xcode-select -p
+
+          xcode_version="$(xcodebuild -version | awk '/Xcode/ { print $2 }')"
+          ios_sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+
+          echo "Selected Xcode version: $xcode_version"
+          echo "Selected iphoneos SDK version: $ios_sdk_version"
+
+          xcode_major="${xcode_version%%.*}"
+          ios_sdk_major="${ios_sdk_version%%.*}"
+
+          if [[ "$xcode_major" -lt 26 ]]; then
+            echo "Xcode 26 or later is required for App Store uploads after 2026-04-28." >&2
+            exit 1
+          fi
+
+          if [[ "$ios_sdk_major" -lt 26 ]]; then
+            echo "iOS 26 SDK or later is required for App Store uploads after 2026-04-28." >&2
+            exit 1
+          fi
+        shell: bash
 
       - name: Install the Apple certificate and provisioning profile
         env:
