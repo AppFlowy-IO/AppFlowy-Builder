@@ -1,5 +1,5 @@
 name: Build AppFlowy Application
-run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.11.1' }} - ${{ github.event.inputs.internal_build || '1' }}
+run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.12.0' }} - ${{ github.event.inputs.internal_build || '1' }}
 
 on:
   schedule:

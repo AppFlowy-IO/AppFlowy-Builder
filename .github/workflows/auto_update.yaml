@@ -578,5 +578,15 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
-            git push
+            for i in 1 2 3 4 5; do
+              if git push; then
+                echo "✅ Push succeeded on attempt $i"
+                exit 0
+              fi
+              echo "⚠️ Push failed on attempt $i, rebasing on latest main and retrying..."
+              git pull --rebase origin main
+              sleep $((i * 3))
+            done
+            echo "❌ Push failed after 5 attempts"
+            exit 1
           fi
