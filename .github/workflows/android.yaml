@@ -68,8 +68,8 @@ on:
         type: string
 
 env:
-  FLUTTER_VERSION: "3.27.4"
-  RUST_TOOLCHAIN: "1.85.0"
+  FLUTTER_VERSION: "3.41.9"
+  RUST_TOOLCHAIN: "1.92.0"
 
 jobs:
   build:
@@ -123,31 +123,31 @@ jobs:
 
       - name: Install Android NDK
         run: |
-          # Install NDK version 26.3.11579264 which AppFlowy expects
-          echo "Installing Android NDK 26.3.11579264..."
+          # Install NDK version 28.2.13676358 for 16 KB page-size support.
+          echo "Installing Android NDK 28.2.13676358..."
           echo "ANDROID_HOME=$ANDROID_HOME"
 
           # Accept licenses first
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
           # Install the specific NDK version
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.3.11579264"
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.2.13676358"
 
           # Verify installation
           echo "Checking NDK installation..."
           ls -la $ANDROID_HOME/ndk/ || echo "NDK directory not found"
 
           # Set environment variables
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
-          echo "$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_PATH
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_PATH
 
           # Verify the NDK path exists
-          if [ -d "$ANDROID_HOME/ndk/26.3.11579264" ]; then
-            echo "NDK 26.3.11579264 installed successfully at $ANDROID_HOME/ndk/26.3.11579264"
+          if [ -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
+            echo "NDK 28.2.13676358 installed successfully at $ANDROID_HOME/ndk/28.2.13676358"
           else
-            echo "Error: NDK 26.3.11579264 not found at expected path"
+            echo "Error: NDK 28.2.13676358 not found at expected path"
             echo "Available NDK versions:"
             ls -la $ANDROID_HOME/ndk/
             exit 1
@@ -161,7 +161,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: "0.37.5"
+          version: "0.37.18"
 
       - name: Install prerequisites
         working-directory: frontend
@@ -212,12 +212,12 @@ jobs:
 
           cd appflowy_flutter
           if [ ${{ inputs.build_type }} = "apk" ]; then
-            flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            flutter build apk --target-platform android-arm64 --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           elif [ ${{ inputs.build_type }} = "appbundle" ]; then
-            flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            flutter build appbundle --target-platform android-arm64 --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           elif [ ${{ inputs.build_type }} = "both" ]; then
-            flutter build apk --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
-            flutter build appbundle --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            flutter build apk --target-platform android-arm64 --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
+            flutter build appbundle --target-platform android-arm64 --build-name ${{ inputs.build_name }} --build-number ${{ inputs.build_number }} --split-debug-info=./debug_info --obfuscate
           fi
 
       - name: Compress debug symbols

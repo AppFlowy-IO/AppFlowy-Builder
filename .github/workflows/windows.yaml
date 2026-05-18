@@ -48,8 +48,8 @@ on:
         type: string
 
 env:
-  FLUTTER_VERSION: "3.27.4"
-  RUST_TOOLCHAIN: "1.85.0"
+  FLUTTER_VERSION: "3.41.9"
+  RUST_TOOLCHAIN: "1.92.0"
 
 jobs:
   build:
@@ -86,7 +86,7 @@ jobs:
 
       - uses: davidB/rust-cargo-make@v1
         with:
-          version: "0.37.5"
+          version: "0.37.18"
 
       - name: Install prerequisites
         working-directory: frontend
