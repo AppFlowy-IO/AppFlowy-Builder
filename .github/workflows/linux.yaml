@@ -149,6 +149,11 @@ jobs:
         working-directory: frontend
         run: |
           flutter config --enable-linux-desktop
+          cd appflowy_flutter
+          flutter pub get
+          dart run pdfrx:remove_wasm_modules
+          trap 'cd "$GITHUB_WORKSPACE/frontend/appflowy_flutter" && dart run pdfrx:remove_wasm_modules --revert' EXIT
+          cd ..
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
 
       - name: Archive Asset
