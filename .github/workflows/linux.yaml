@@ -232,13 +232,42 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("scripts/linux_distribution/appimage/build_appimage.sh")
+          script_path = Path("scripts/linux_distribution/appimage/build_appimage.sh")
+          recipe_path = Path("scripts/linux_distribution/appimage/AppImageBuilder.yml")
+          patched = False
+
+          path = script_path
           text = path.read_text()
           old = 'DIR="\\$(dirname "\\$(readlink -f "\\$0")")"\\nexec "\\$DIR/${APP_NAME}" "\\$@"'
           new = 'DIR="\\$(dirname "\\$(readlink -f "\\$0")")"\\nexport LD_LIBRARY_PATH="\\$DIR/lib:\\${LD_LIBRARY_PATH:-}"\\nexec "\\$DIR/${APP_NAME}" "\\$@"'
-          if old not in text:
-              raise SystemExit("Unable to patch AppRun template")
-          path.write_text(text.replace(old, new))
+          if old in text:
+              path.write_text(text.replace(old, new))
+              patched = True
+
+          if recipe_path.exists():
+              path = recipe_path
+              text = path.read_text()
+              if "LD_LIBRARY_PATH:" not in text:
+                  runtime = (
+                      "  runtime:\n"
+                      "    env:\n"
+                      "      LD_LIBRARY_PATH: '${APPDIR}/lib:${LD_LIBRARY_PATH}'\n"
+                  )
+                  if "  test:\n" in text:
+                      marker = "  test:\n"
+                      replacement = runtime + marker
+                  elif "AppImage:\n" in text:
+                      marker = "AppImage:\n"
+                      replacement = runtime + marker
+                  else:
+                      raise SystemExit("Unable to patch AppImageBuilder runtime environment")
+                  path.write_text(text.replace(marker, replacement, 1))
+                  patched = True
+              else:
+                  patched = True
+
+          if not patched:
+              raise SystemExit("Unable to patch AppImage runtime library path")
           PY
 
           # Run AppImage build script
@@ -246,6 +275,7 @@ jobs:
             echo "⚠️ AppImage build failed, but continuing..."
             # Create a dummy AppImage file to prevent upload failures
             touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
+            touch "AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
           }
 
       - name: Upload ZIP
