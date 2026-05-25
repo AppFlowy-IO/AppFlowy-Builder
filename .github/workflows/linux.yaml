@@ -129,6 +129,10 @@ jobs:
           sudo apt-get -y install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
           # Install FUSE for AppImage support
           sudo apt-get install -y fuse libfuse2
+          # dpkg-shlibdeps (dpkg-dev) computes the .deb runtime dependencies;
+          # the rest are tools appimage-builder shells out to while assembling
+          # the AppImage.
+          sudo apt-get install -y dpkg-dev patchelf desktop-file-utils libgtk-3-bin squashfs-tools zsync gnupg fakeroot strace
           source $HOME/.cargo/env
           cargo install duckscript_cli --force --locked
           rustup target add ${{ matrix.target }}
@@ -160,6 +164,63 @@ jobs:
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
 
+      - name: Compute .deb runtime dependencies
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          BUNDLE="appflowy_flutter/product/${{ inputs.build_name }}/linux/Release/AppFlowy"
+          CONTROL="scripts/linux_distribution/deb/DEBIAN/control"
+
+          if [ ! -x "$BUNDLE/AppFlowy" ]; then
+            echo "::error::AppFlowy binary not found at $BUNDLE/AppFlowy"
+            exit 1
+          fi
+          ABS_BUNDLE="$(pwd)/$BUNDLE"
+
+          # dpkg-shlibdeps maps every system shared library NEEDED by the
+          # executable and the bundled Flutter plugins (incl. media_kit ->
+          # libmpv.so.1) to its providing apt package. It expects a throwaway
+          # debian/ tree; --ignore-missing-info skips Flutter's own bundled
+          # .so files, which are not provided by any apt package.
+          WORK="$(mktemp -d)"
+          mkdir -p "$WORK/debian"
+          printf 'Source: appflowy\nMaintainer: AppFlowy\n\nPackage: appflowy\nArchitecture: amd64\nDescription: AppFlowy\n' > "$WORK/debian/control"
+
+          COMPUTED=""
+          if ( cd "$WORK" && dpkg-shlibdeps -O --ignore-missing-info \
+                 "$ABS_BUNDLE/AppFlowy" "$ABS_BUNDLE"/lib/*.so ) > "$WORK/out" 2> "$WORK/err"; then
+            COMPUTED="$(sed -n 's/^shlibs:Depends=//p' "$WORK/out")"
+          fi
+          echo "---- dpkg-shlibdeps diagnostics ----"
+          cat "$WORK/err" || true
+          echo "computed Depends: ${COMPUTED:-<none>}"
+
+          # Curated fallback covering the critical runtime libraries, used only
+          # if shlibdeps fails outright. libmpv1 is the fix for the reported
+          # "libmpv.so.1: cannot open shared object file" crash.
+          ESSENTIAL="libgtk-3-0, libkeybinder-3.0-0, libnotify4, libmpv1, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libasound2"
+
+          if [ -n "$COMPUTED" ]; then
+            DEPS="$COMPUTED"
+          else
+            echo "::warning::dpkg-shlibdeps produced no output; using curated dependency list"
+            DEPS="$ESSENTIAL"
+          fi
+          # Belt-and-braces: guarantee libmpv is declared even if shlibdeps missed it.
+          case "$DEPS" in
+            *libmpv*) ;;
+            *) DEPS="$DEPS, libmpv1" ;;
+          esac
+
+          python3 - "$CONTROL" "$DEPS" <<'PY'
+          import re, sys
+          path, deps = sys.argv[1], sys.argv[2]
+          text = open(path).read()
+          text = re.sub(r'(?m)^Depends:.*$', 'Depends: ' + deps, text, count=1)
+          open(path, 'w').write(text)
+          print("patched control ->", "Depends: " + deps)
+          PY
+
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
@@ -175,17 +236,84 @@ jobs:
         working-directory: frontend
         continue-on-error: true
         run: |
-          echo "📦 Building AppImage package..."
+          set -euo pipefail
+          echo "📦 Building AppImage with appimage-builder (auto-bundles libmpv & its deps)..."
 
           # Enable FUSE user space file systems
           echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
 
-          # Run AppImage build script
-          sh scripts/linux_distribution/appimage/build_appimage.sh ${{ inputs.build_name }} || {
+          # Generate the appimage-builder recipe. appimage-builder scans every
+          # ELF in the bundle, resolves each NEEDED library (incl. the media_kit
+          # plugin's libmpv.so.1 and its ffmpeg/libass/... tree) to an apt
+          # package, bundles them, and generates a runtime that wires up the
+          # library path. This is the approach the public AppFlowy repo uses.
+          # libmpv is also listed explicitly so the result is correct even if
+          # auto-detection is skipped. ${{ inputs.build_name }} is the version.
+          cat > AppImageBuilder.yml <<'YML'
+          version: 1
+          script:
+            - rm -rf AppDir || true
+            - cp -r appflowy_flutter/build/linux/x64/release/bundle AppDir
+            - mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
+            - cp scripts/linux_distribution/packaging/appflowy.svg AppDir/usr/share/icons/hicolor/scalable/apps/
+          AppDir:
+            path: ./AppDir
+            app_info:
+              id: io.appflowy.AppFlowy
+              name: AppFlowy
+              icon: appflowy.svg
+              version: "APPFLOWY_VERSION"
+              exec: AppFlowy
+              exec_args: $@
+            apt:
+              arch:
+                - amd64
+              allow_unauthenticated: true
+              sources:
+                - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
+                - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
+                - sourceline: deb http://security.ubuntu.com/ubuntu jammy-security main restricted universe multiverse
+              include:
+                - libc6:amd64
+                - libnotify4:amd64
+                - libkeybinder-3.0-0:amd64
+                - libwayland-cursor0:amd64
+                - libwayland-client0:amd64
+                - libwayland-egl1:amd64
+                - libmpv1:amd64
+            files:
+              include: []
+              exclude:
+                - usr/share/man
+                - usr/share/doc/*/README.*
+                - usr/share/doc/*/changelog.*
+                - usr/share/doc/*/NEWS.*
+                - usr/share/doc/*/TODO.*
+          AppImage:
+            arch: x86_64
+          YML
+          sed -i "s/APPFLOWY_VERSION/${{ inputs.build_name }}/" AppImageBuilder.yml
+
+          # Download appimage-builder (same version proven in the public AppFlowy repo).
+          APPIMAGE_BUILDER="./appimage-builder-x86_64.AppImage"
+          if [ ! -x "$APPIMAGE_BUILDER" ]; then
+            wget -q -O "$APPIMAGE_BUILDER" \
+              https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
+            chmod +x "$APPIMAGE_BUILDER"
+          fi
+
+          # APPIMAGE_EXTRACT_AND_RUN lets the builder (itself an AppImage) run
+          # where FUSE is unavailable (CI runners).
+          if APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE_BUILDER" --recipe AppImageBuilder.yml --skip-tests; then
+            # appimage-builder emits AppFlowy-<version>-x86_64.AppImage in CWD
+            # (frontend), which is exactly where the upload step looks.
+            ls -la AppFlowy-*-x86_64.AppImage
+          else
             echo "⚠️ AppImage build failed, but continuing..."
             # Create a dummy AppImage file to prevent upload failures
             touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
-          }
+            touch "AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
+          fi
 
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
