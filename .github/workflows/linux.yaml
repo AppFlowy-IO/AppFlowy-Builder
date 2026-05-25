@@ -120,7 +120,7 @@ jobs:
           sudo apt-get install -y --fix-broken
           sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev libcurl4-openssl-dev libepoxy-dev
           sudo apt-get install keybinder-3.0 libnotify-dev libwayland-cursor0 libwayland-client0 libwayland-egl1 unzip
-          sudo apt-get -y install alien patchelf
+          sudo apt-get -y install alien
           sudo apt install libmpv-dev mpv
           sudo apt install libasound2-dev
           # Install GStreamer for audioplayers_linux
@@ -156,55 +156,6 @@ jobs:
           cd ..
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
 
-      - name: Bundle media_kit Linux runtime dependencies
-        working-directory: frontend
-        run: |
-          set -euo pipefail
-          BUNDLE_DIR="appflowy_flutter/product/${{ inputs.build_name }}/linux/Release"
-
-          echo "Release bundle layout:"
-          find "$BUNDLE_DIR" -maxdepth 3 -type f \( -name '*.so*' -o -name 'AppFlowy' \) | sort
-
-          MEDIA_KIT_PLUGIN_PATH="$(find "$BUNDLE_DIR" -type f -name 'libmedia_kit_video_plugin.so' -print -quit)"
-          if [ -z "$MEDIA_KIT_PLUGIN_PATH" ]; then
-            echo "::error::libmedia_kit_video_plugin.so was not found in $BUNDLE_DIR"
-            exit 1
-          fi
-          BUNDLE_LIB_DIR="$(dirname "$MEDIA_KIT_PLUGIN_PATH")"
-
-          LIBMPV_PATH="$(ldconfig -p | awk '/libmpv\.so\.1 / { print $NF; exit }')"
-          if [ -z "$LIBMPV_PATH" ]; then
-            echo "::error::libmpv.so.1 was not found on the build runner"
-            exit 1
-          fi
-
-          copy_runtime_lib() {
-            local lib_path="$1"
-            local lib_name
-            lib_name="$(basename "$lib_path")"
-            case "$lib_name" in
-              libc.so.*|libdl.so.*|libm.so.*|libpthread.so.*|librt.so.*|ld-linux-*.so.*)
-                return 0
-                ;;
-            esac
-            cp -nL "$lib_path" "$BUNDLE_LIB_DIR/"
-          }
-
-          copy_runtime_lib "$LIBMPV_PATH"
-          ldd "$LIBMPV_PATH" | awk '/=> \// { print $3 } /^\// { print $1 }' | while read -r lib_path; do
-            copy_runtime_lib "$lib_path"
-          done
-
-          find "$BUNDLE_LIB_DIR" -maxdepth 1 -type f -name '*.so*' -print0 | while IFS= read -r -d '' bundled_lib; do
-            if file "$bundled_lib" | grep -q 'ELF'; then
-              patchelf --set-rpath '$ORIGIN' "$bundled_lib"
-            fi
-          done
-          patchelf --set-rpath '$ORIGIN' "$MEDIA_KIT_PLUGIN_PATH"
-
-          ldd "$MEDIA_KIT_PLUGIN_PATH"
-          ldd "$BUNDLE_LIB_DIR/libmpv.so.1"
-
       - name: Archive Asset
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
@@ -229,53 +180,11 @@ jobs:
           # Enable FUSE user space file systems
           echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
 
-          python3 - <<'PY'
-          from pathlib import Path
-
-          script_path = Path("scripts/linux_distribution/appimage/build_appimage.sh")
-          recipe_path = Path("scripts/linux_distribution/appimage/AppImageBuilder.yml")
-          patched = False
-
-          path = script_path
-          text = path.read_text()
-          old = 'DIR="\\$(dirname "\\$(readlink -f "\\$0")")"\\nexec "\\$DIR/${APP_NAME}" "\\$@"'
-          new = 'DIR="\\$(dirname "\\$(readlink -f "\\$0")")"\\nexport LD_LIBRARY_PATH="\\$DIR/lib:\\${LD_LIBRARY_PATH:-}"\\nexec "\\$DIR/${APP_NAME}" "\\$@"'
-          if old in text:
-              path.write_text(text.replace(old, new))
-              patched = True
-
-          if recipe_path.exists():
-              path = recipe_path
-              text = path.read_text()
-              if "LD_LIBRARY_PATH:" not in text:
-                  runtime = (
-                      "  runtime:\n"
-                      "    env:\n"
-                      "      LD_LIBRARY_PATH: '${APPDIR}/lib:${LD_LIBRARY_PATH}'\n"
-                  )
-                  if "  test:\n" in text:
-                      marker = "  test:\n"
-                      replacement = runtime + marker
-                  elif "AppImage:\n" in text:
-                      marker = "AppImage:\n"
-                      replacement = runtime + marker
-                  else:
-                      raise SystemExit("Unable to patch AppImageBuilder runtime environment")
-                  path.write_text(text.replace(marker, replacement, 1))
-                  patched = True
-              else:
-                  patched = True
-
-          if not patched:
-              raise SystemExit("Unable to patch AppImage runtime library path")
-          PY
-
           # Run AppImage build script
           sh scripts/linux_distribution/appimage/build_appimage.sh ${{ inputs.build_name }} || {
             echo "⚠️ AppImage build failed, but continuing..."
             # Create a dummy AppImage file to prevent upload failures
             touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
-            touch "AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
           }
 
       - name: Upload ZIP
