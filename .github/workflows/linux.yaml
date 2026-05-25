@@ -156,6 +156,40 @@ jobs:
           cd ..
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
 
+      - name: Bundle media_kit Linux runtime dependencies
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="appflowy_flutter/product/${{ inputs.build_name }}/linux/Release"
+          BUNDLE_LIB_DIR="$BUNDLE_DIR/lib"
+          mkdir -p "$BUNDLE_LIB_DIR"
+
+          LIBMPV_PATH="$(ldconfig -p | awk '/libmpv\.so\.1 / { print $NF; exit }')"
+          if [ -z "$LIBMPV_PATH" ]; then
+            echo "::error::libmpv.so.1 was not found on the build runner"
+            exit 1
+          fi
+
+          copy_runtime_lib() {
+            local lib_path="$1"
+            local lib_name
+            lib_name="$(basename "$lib_path")"
+            case "$lib_name" in
+              libc.so.*|libdl.so.*|libm.so.*|libpthread.so.*|librt.so.*|ld-linux-*.so.*)
+                return 0
+                ;;
+            esac
+            cp -nL "$lib_path" "$BUNDLE_LIB_DIR/"
+          }
+
+          copy_runtime_lib "$LIBMPV_PATH"
+          ldd "$LIBMPV_PATH" | awk '/=> \// { print $3 } /^\// { print $1 }' | while read -r lib_path; do
+            copy_runtime_lib "$lib_path"
+          done
+
+          ldd "$BUNDLE_LIB_DIR/libmedia_kit_video_plugin.so"
+          ldd "$BUNDLE_LIB_DIR/libmpv.so.1"
+
       - name: Archive Asset
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
@@ -179,6 +213,18 @@ jobs:
 
           # Enable FUSE user space file systems
           echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/linux_distribution/appimage/build_appimage.sh")
+          text = path.read_text()
+          old = 'DIR="\\$(dirname "\\$(readlink -f "\\$0")")"\\nexec "\\$DIR/${APP_NAME}" "\\$@"'
+          new = 'DIR="\\$(dirname "\\$(readlink -f "\\$0")")"\\nexport LD_LIBRARY_PATH="\\$DIR/lib:\\${LD_LIBRARY_PATH:-}"\\nexec "\\$DIR/${APP_NAME}" "\\$@"'
+          if old not in text:
+              raise SystemExit("Unable to patch AppRun template")
+          path.write_text(text.replace(old, new))
+          PY
 
           # Run AppImage build script
           sh scripts/linux_distribution/appimage/build_appimage.sh ${{ inputs.build_name }} || {
