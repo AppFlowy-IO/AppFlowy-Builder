@@ -164,6 +164,28 @@ jobs:
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
 
+      - name: Bundle libmpv into AppFlowy bundle
+        run: |
+          set -euo pipefail
+          # The Flutter bundle structure is:
+          # Release/
+          #   AppFlowy          <- executable
+          #   lib/              <- shared libraries (flutter build output)
+          #   libmpv/           <- our extra dir for bundled libmpv
+          BUNDLE="appflowy_flutter/product/${{ inputs.build_name }}/linux/Release"
+          mkdir -p "$BUNDLE/lib" "$BUNDLE/libmpv"
+          # Download libmpv1 from Ubuntu jammy (22.04) for maximum compatibility
+          # This ensures the .so file is bundled and doesn't rely on system packages
+          wget -q -O /tmp/libmpv1.deb \
+            http://archive.ubuntu.com/ubuntu/pool/universe/m/mpv/libmpv1_0.34.1-1ubuntu3_amd64.deb
+          ls -lh /tmp/libmpv1.deb
+          dpkg-deb -x /tmp/libmpv1.deb /tmp/libmpv-extracted
+          ls -la /tmp/libmpv-extracted/usr/lib/x86_64-linux-gnu/
+          cp -r /tmp/libmpv-extracted/usr/lib/x86_64-linux-gnu/* "$BUNDLE/lib/"
+          # Also copy to libmpv subfolder for backup
+          cp /tmp/libmpv-extracted/usr/lib/x86_64-linux-gnu/libmpv.so.1* "$BUNDLE/libmpv/" 2>/dev/null || true
+          echo "✅ libmpv bundled into $BUNDLE/lib/"
+
       - name: Compute .deb runtime dependencies
         working-directory: frontend
         run: |
@@ -196,9 +218,9 @@ jobs:
           echo "computed Depends: ${COMPUTED:-<none>}"
 
           # Curated fallback covering the critical runtime libraries, used only
-          # if shlibdeps fails outright. libmpv1 is the fix for the reported
-          # "libmpv.so.1: cannot open shared object file" crash.
-          ESSENTIAL="libgtk-3-0, libkeybinder-3.0-0, libnotify4, libmpv1, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libasound2"
+          # if shlibdeps fails outright. libmpv is NO LONGER listed here because
+          # we now bundle it inside the .deb - no external dependency needed.
+          ESSENTIAL="libgtk-3-0, libkeybinder-3.0-0, libnotify4, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libasound2"
 
           if [ -n "$COMPUTED" ]; then
             DEPS="$COMPUTED"
@@ -206,11 +228,8 @@ jobs:
             echo "::warning::dpkg-shlibdeps produced no output; using curated dependency list"
             DEPS="$ESSENTIAL"
           fi
-          # Belt-and-braces: guarantee libmpv is declared even if shlibdeps missed it.
-          case "$DEPS" in
-            *libmpv*) ;;
-            *) DEPS="$DEPS, libmpv1" ;;
-          esac
+          # Remove any libmpv reference from computed deps since we bundle it
+          DEPS="$(echo "$DEPS" | sed 's/libmpv1,//g' | sed 's/,libmpv1//g' | sed 's/libmpv2,//g' | sed 's/,libmpv2//g')"
 
           python3 - "$CONTROL" "$DEPS" <<'PY'
           import re, sys
@@ -242,6 +261,15 @@ jobs:
           # Enable FUSE user space file systems
           echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
 
+          # Download and bundle libmpv from Ubuntu jammy BEFORE appimage-builder runs.
+          # media_kit loads libmpv.so.1 at runtime via dlopen, which appimage-builder's
+          # ELF scanner may miss. We pre-bundle it to guarantee it's in the AppImage.
+          LIBMPV_DEB="/tmp/libmpv1.AppImage.bundle.deb"
+          mkdir -p /tmp/libmpv-AppImage
+          wget -q -O "$LIBMPV_DEB" \
+            http://archive.ubuntu.com/ubuntu/pool/universe/m/mpv/libmpv1_0.34.1-1ubuntu3_amd64.deb
+          dpkg-deb -x "$LIBMPV_DEB" /tmp/libmpv-AppImage/extracted
+
           # Generate the appimage-builder recipe. appimage-builder scans every
           # ELF in the bundle, resolves each NEEDED library (incl. the media_kit
           # plugin's libmpv.so.1 and its ffmpeg/libass/... tree) to an apt
@@ -256,6 +284,8 @@ jobs:
             - cp -r appflowy_flutter/build/linux/x64/release/bundle AppDir
             - mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
             - cp scripts/linux_distribution/packaging/appflowy.svg AppDir/usr/share/icons/hicolor/scalable/apps/
+            - mkdir -p AppDir/usr/lib/x86_64-linux-gnu
+            - cp -r /tmp/libmpv-AppImage/extracted/usr/lib/x86_64-linux-gnu/* AppDir/usr/lib/x86_64-linux-gnu/
           AppDir:
             path: ./AppDir
             app_info:
