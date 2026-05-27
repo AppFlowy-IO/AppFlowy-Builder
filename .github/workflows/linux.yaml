@@ -160,9 +160,91 @@ jobs:
           cd ..
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
 
-      - name: Archive Asset
+      - name: Archive Asset (self-contained, bundles libmpv)
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: tar -czf ${{ env.LINUX_ZIP_NAME }} *
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The raw tarball is the only Linux channel that ships no libmpv:
+          # the .deb declares libmpv1, the .rpm inherits it, the AppImage bundles
+          # it via appimage-builder. media_kit's video plugin hard-NEEDs
+          # libmpv.so.1, so a bare tarball crashes with
+          #   "libmpv.so.1: cannot open shared object file".
+          # The Flathub package just repackages THIS tarball, so it crashes too.
+          #
+          # Fix: stage a copy of the Flutter bundle and inject libmpv + its full
+          # dependency closure into lib/, then point the relevant ELFs at
+          # $ORIGIN so they resolve from the bundle. This makes the tarball (and
+          # therefore Flathub) self-contained without touching the deb/rpm/
+          # AppImage paths, which keep their own libmpv handling.
+          STAGE_PARENT="$(mktemp -d)"
+          STAGE="$STAGE_PARENT/AppFlowy"
+          cp -a AppFlowy "$STAGE"
+          LIBDIR="$STAGE/lib"
+
+          # Libraries the target already provides — bundling these is harmful:
+          # GPU/Vulkan/VAAPI drivers MUST match the host, and a bundled (older)
+          # GLib/GStreamer shadows the host's and breaks the GStreamer plugins
+          # audioplayers_linux loads at startup (AppFlowy issue #8763). Anything
+          # NOT matched here is the ffmpeg/mpv media stack, whose SONAMEs are
+          # locked to this runner's libmpv build, so it gets bundled.
+          is_host_lib() {
+            case "$1" in
+              ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
+              libstdc++.so*|libgcc_s.so*) return 0;;
+              libGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvulkan*|libva*) return 0;;
+              libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
+              libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
+              libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*) return 0;;
+              libfontconfig*|libfreetype*|libharfbuzz*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
+              libdbus-1*|libsystemd*|libudev*|libelf*) return 0;;
+              libpulse*|libasound*|libpipewire-*|libjack*|libsndio*) return 0;;
+              libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
+              libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
+              *) return 1;;
+            esac
+          }
+
+          LIBMPV="$(ldconfig -p | awk '/libmpv\.so\.1/{print $NF; exit}')"
+          if [ -z "${LIBMPV:-}" ] || [ ! -e "$LIBMPV" ]; then
+            echo "::error::libmpv.so.1 not found on the build runner (is 'libmpv-dev mpv' installed?)"; exit 1
+          fi
+          cp -L "$LIBMPV" "$LIBDIR/libmpv.so.1"
+
+          # ldd is fully transitive, so one pass over libmpv yields the whole
+          # closure. Copy each NEEDED lib under its SONAME (the name left of
+          # '=>'), not its versioned real filename, so dynamic NEEDED entries
+          # resolve by name.
+          CLOSURE="$(ldd "$LIBMPV")"
+          while read -r soname arrow path _rest; do
+            [ "$arrow" = "=>" ] || continue
+            [ -n "$path" ] && [ -e "$path" ] || continue
+            is_host_lib "$soname" && continue
+            cp -L "$path" "$LIBDIR/$soname"
+          done <<< "$CLOSURE"
+
+          chmod -R u+w "$LIBDIR"
+
+          # Make libmpv resolve from the bundle dir at runtime:
+          #  - libmedia_kit_video_plugin.so hard-NEEDs libmpv.so.1 but carries a
+          #    stale CI RUNPATH; libapp.so dlopen()s "libmpv.so.1". Both must
+          #    search $ORIGIN.
+          #  - each bundled media lib resolves its siblings via $ORIGIN.
+          for f in libmedia_kit_video_plugin.so libapp.so libmpv.so.1; do
+            [ -e "$LIBDIR/$f" ] && patchelf --set-rpath '$ORIGIN' "$LIBDIR/$f"
+          done
+          while read -r soname arrow _path _rest; do
+            [ "$arrow" = "=>" ] || continue
+            is_host_lib "$soname" && continue
+            [ -e "$LIBDIR/$soname" ] && patchelf --set-rpath '$ORIGIN' "$LIBDIR/$soname"
+          done <<< "$CLOSURE"
+
+          echo "---- bundled media libs ----"
+          ls -1 "$LIBDIR" | grep -E 'libmpv|libav|libass|libplacebo|libsw|libpostproc' || true
+          echo "---- video plugin now resolves libmpv from the bundle ----"
+          ( cd "$LIBDIR" && ldd ./libmedia_kit_video_plugin.so | grep -i mpv ) || true
+
+          tar -C "$STAGE_PARENT" -czf "${{ env.LINUX_ZIP_NAME }}" AppFlowy
 
       - name: Compute .deb runtime dependencies
         working-directory: frontend
@@ -521,3 +603,69 @@ jobs:
             exit 1
           fi
           echo "✅ AppImage launched without symbol lookup errors"
+
+  # Gate for the "libmpv.so.1: cannot open shared object file" crash. Runs on
+  # ubuntu-24.04, which has NO libmpv1 package and a newer GLib (2.80) — i.e. a
+  # host where a non-self-contained tarball would fail. We deliberately do NOT
+  # install libmpv, then launch the extracted tarball headlessly and fail on any
+  # libmpv/symbol error. Without the bundling step this job goes red; with it,
+  # green.
+  tarball-smoke-test:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install runtime dependencies (no libmpv — prove self-containment)
+        run: |
+          sudo apt-get update
+          # GTK + GL + the host GStreamer stack audioplayers_linux loads at
+          # startup. libmpv is intentionally omitted: the tarball must supply it.
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgtk-3-0 libgl1 libegl1 \
+            libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - name: Download tarball artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-linux.tar.gz
+          path: tarball
+
+      - name: Smoke-test tarball launch
+        shell: bash
+        run: |
+          set -uo pipefail
+          TGZ="$(ls tarball/AppFlowy-*-linux.tar.gz 2>/dev/null | head -n1 || true)"
+          if [ -z "$TGZ" ]; then
+            echo "::error::No tarball found in the downloaded artifact"; exit 1
+          fi
+          echo "Testing: $TGZ"
+          tar -xzf "$TGZ"
+
+          test -x AppFlowy/AppFlowy        || { echo "::error::AppFlowy binary missing"; exit 1; }
+          test -e AppFlowy/lib/libmpv.so.1 || { echo "::error::libmpv.so.1 was not bundled into the tarball"; exit 1; }
+
+          # Strongest static check: resolve the plugin's NEEDED libs from its
+          # $ORIGIN. On this libmpv-less host, "not found" means the bundle/rpath
+          # is wrong.
+          echo "----- ldd libmedia_kit_video_plugin.so -----"
+          ( cd AppFlowy/lib && ldd ./libmedia_kit_video_plugin.so ) || true
+          if ( cd AppFlowy/lib && ldd ./libmedia_kit_video_plugin.so ) | grep -Eiq 'libmpv\.so\.1[^=]*=> *not found|libmpv\.so\.1 *\(not found\)'; then
+            echo "::error::libmpv.so.1 does not resolve from the bundle"; exit 1
+          fi
+
+          # A GUI app won't exit on its own; timeout killing it = it stayed up.
+          # Pass/fail keys only on dynamic-linking errors so unrelated headless
+          # quirks don't fail the job.
+          set +e
+          timeout 40s xvfb-run -a ./AppFlowy/AppFlowy > smoke.log 2>&1
+          status=$?
+          set -e
+          echo "----- app output -----"
+          cat smoke.log || true
+          echo "----- exit status: $status -----"
+
+          if grep -Eiq "libmpv\.so\.1: cannot open shared object file|symbol lookup error|undefined symbol" smoke.log; then
+            echo "::error::tarball failed with a dynamic-linking error — libmpv bundling regression"
+            exit 1
+          fi
+          echo "✅ tarball launched without libmpv/symbol errors"
