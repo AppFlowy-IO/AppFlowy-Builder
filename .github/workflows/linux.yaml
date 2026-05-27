@@ -319,6 +319,22 @@ jobs:
                 - usr/share/doc/*/changelog.*
                 - usr/share/doc/*/NEWS.*
                 - usr/share/doc/*/TODO.*
+                # GLib must come from the host, not the (older, jammy) bundle.
+                # appimage-builder otherwise bundles GLib 2.72 as a transitive
+                # dep of libmpv1/libnotify4; that older GLib shadows the host's
+                # newer GLib at runtime and breaks the host GStreamer plugins
+                # that audioplayers_linux loads (e.g. libgstapp needs
+                # g_once_init_leave_pointer, added in GLib 2.80). Since we build
+                # on the oldest supported distro, the host GLib is always >= the
+                # bundled one and backward-compatible. Fixes AppFlowy issue #8763.
+                - usr/lib/x86_64-linux-gnu/libglib-2.0.so*
+                - usr/lib/x86_64-linux-gnu/libgobject-2.0.so*
+                - usr/lib/x86_64-linux-gnu/libgio-2.0.so*
+                - usr/lib/x86_64-linux-gnu/libgmodule-2.0.so*
+                - usr/lib/x86_64-linux-gnu/libgthread-2.0.so*
+                # Keep GStreamer host-provided too so its plugins stay ABI
+                # consistent with the host GLib above.
+                - usr/lib/x86_64-linux-gnu/libgst*.so*
           AppImage:
             arch: x86_64
           YML
@@ -466,3 +482,72 @@ jobs:
             --data-binary @"$filepath" \
             "${upload_url}?name=${encoded_filename}" \
             --fail-with-body
+
+  # Gate for AppFlowy issue #8763. Ubuntu 24.04 ships GLib 2.80 — the release
+  # where g_once_init_leave_pointer was added — so it reproduces the original
+  # crash: a bundled older GLib shadows the host's, and the host GStreamer
+  # plugins audioplayers_linux loads at startup fail to resolve that symbol.
+  # This job launches the produced AppImage headlessly and fails if any
+  # dynamic-linking symbol error is printed. Without the GLib-exclude fix in the
+  # build job this job goes red; with it, green.
+  appimage-smoke-test:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          # GTK + the host GStreamer stack audioplayers_linux pulls in at startup
+          # (this is what loads libgstapp-1.0.so.0). xvfb gives a headless display
+          # so the GUI can actually start.
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgtk-3-0 \
+            libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-linux-x86_64.AppImage
+          path: appimage
+
+      - name: Smoke-test AppImage launch
+        run: |
+          set -uo pipefail
+          APPIMAGE="$(ls appimage/AppFlowy-*-x86_64.AppImage 2>/dev/null | head -n1 || true)"
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::No AppImage found in the downloaded artifact"
+            exit 1
+          fi
+          echo "Testing: $APPIMAGE"
+          ls -la "$APPIMAGE"
+
+          # The build job's AppImage step is continue-on-error and falls back to
+          # an empty placeholder file. Reject that so a failed build can no longer
+          # slip through green.
+          size=$(stat -c%s "$APPIMAGE")
+          if [ "$size" -lt 1000000 ]; then
+            echo "::error::AppImage is only ${size} bytes — the build likely failed and produced a placeholder"
+            exit 1
+          fi
+
+          chmod +x "$APPIMAGE"
+          # FUSE isn't available on the runner; extract-and-run instead.
+          export APPIMAGE_EXTRACT_AND_RUN=1
+
+          # A GUI app won't exit on its own, so timeout killing it means it stayed
+          # up = good. Pass/fail is keyed only on whether a dynamic-linking symbol
+          # error was printed, so unrelated headless-CI quirks don't fail the job.
+          set +e
+          timeout 40s xvfb-run -a "$APPIMAGE" > smoke.log 2>&1
+          status=$?
+          set -e
+          echo "----- app output -----"
+          cat smoke.log || true
+          echo "----- exit status: $status -----"
+
+          if grep -Eiq "symbol lookup error|undefined symbol" smoke.log; then
+            echo "::error::AppImage failed with a dynamic-linking symbol error — issue #8763 regression"
+            exit 1
+          fi
+          echo "✅ AppImage launched without symbol lookup errors"
