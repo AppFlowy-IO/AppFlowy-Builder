@@ -192,13 +192,18 @@ jobs:
             case "$1" in
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
               libstdc++.so*|libgcc_s.so*) return 0;;
-              libGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvulkan*|libva*) return 0;;
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*|libva*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*) return 0;;
               libfontconfig*|libfreetype*|libharfbuzz*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
               libdbus-1*|libsystemd*|libudev*|libelf*) return 0;;
-              libpulse*|libasound*|libpipewire-*|libjack*|libsndio*) return 0;;
+              # Audio CLIENTS that talk to the host server and are reliably
+              # present (host & flatpak runtime). NOTE: libjack/libsndio are
+              # deliberately NOT here — libmpv/libavdevice/libopenal hard-NEED
+              # them yet they're frequently absent, so they must be bundled
+              # (mpv never actually uses them at runtime; pulse/pipewire wins).
+              libpulse*|libasound*|libpipewire-*) return 0;;
               libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
               libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
               *) return 1;;
@@ -644,18 +649,43 @@ jobs:
           test -x AppFlowy/AppFlowy        || { echo "::error::AppFlowy binary missing"; exit 1; }
           test -e AppFlowy/lib/libmpv.so.1 || { echo "::error::libmpv.so.1 was not bundled into the tarball"; exit 1; }
 
-          # Strongest static check: resolve the plugin's NEEDED libs from its
-          # $ORIGIN. On this libmpv-less host, "not found" means the bundle/rpath
-          # is wrong.
-          echo "----- ldd libmedia_kit_video_plugin.so -----"
-          ( cd AppFlowy/lib && ldd ./libmedia_kit_video_plugin.so ) || true
-          if ( cd AppFlowy/lib && ldd ./libmedia_kit_video_plugin.so ) | grep -Eiq 'libmpv\.so\.1[^=]*=> *not found|libmpv\.so\.1 *\(not found\)'; then
-            echo "::error::libmpv.so.1 does not resolve from the bundle"; exit 1
-          fi
+          # Deterministic, install-free gate: every library libmpv.so.1 and the
+          # media_kit video plugin NEED must be either bundled next to them or a
+          # genuinely-always-present host lib (GPU driver / display / GLib /
+          # audio server client / core toolchain). Anything else (e.g.
+          # libjack.so.0, libsndio.so.1) missing from lib/ is a bundling bug
+          # that would crash on hosts/flatpak runtimes lacking it. This catches
+          # the failure class the runtime launch below can miss.
+          is_host_lib() {
+            case "$1" in
+              ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*|libstdc++.so*|libgcc_s.so*) return 0;;
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*|libva*) return 0;;
+              libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
+              libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
+              libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libepoxy*|libharfbuzz*|libfreetype*|libfontconfig*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
+              libpulse*|libasound*|libpipewire-*) return 0;;
+              libdbus-1*|libsystemd*|libudev*|libelf*|libz.so*|libbz2*|liblzma*|libzstd*|libexpat*|libffi*|libpcre*|libuuid*|libgcrypt*|libgpg-error*) return 0;;
+              libgnutls*|libssl*|libcrypto*|libtasn1*|libnettle*|libhogweed*|libgmp*|libp11-kit*|libidn2*|libunistring*) return 0;;
+              *) return 1;;
+            esac
+          }
+          fail=0
+          for so in libmpv.so.1 libmedia_kit_video_plugin.so; do
+            while read -r n; do
+              [ -n "$n" ] || continue
+              is_host_lib "$n" && continue
+              if [ ! -e "AppFlowy/lib/$n" ]; then
+                echo "::error::AppFlowy/lib/$so NEEDs '$n' but it is neither bundled nor a host lib"; fail=1
+              fi
+            done < <(readelf -d "AppFlowy/lib/$so" | sed -n 's/.*NEEDED.*\[\(.*\)\].*/\1/p')
+          done
+          [ "$fail" -eq 0 ] || { echo "::error::tarball is not self-contained — see missing libs above"; exit 1; }
+          echo "✅ static check: libmpv closure is self-contained"
 
           # A GUI app won't exit on its own; timeout killing it = it stayed up.
           # Pass/fail keys only on dynamic-linking errors so unrelated headless
-          # quirks don't fail the job.
+          # quirks don't fail the job. The grep now catches ANY missing shared
+          # object, not just libmpv.so.1.
           set +e
           timeout 40s xvfb-run -a ./AppFlowy/AppFlowy > smoke.log 2>&1
           status=$?
@@ -664,8 +694,8 @@ jobs:
           cat smoke.log || true
           echo "----- exit status: $status -----"
 
-          if grep -Eiq "libmpv\.so\.1: cannot open shared object file|symbol lookup error|undefined symbol" smoke.log; then
-            echo "::error::tarball failed with a dynamic-linking error — libmpv bundling regression"
+          if grep -Eiq "cannot open shared object file|symbol lookup error|undefined symbol" smoke.log; then
+            echo "::error::tarball failed with a dynamic-linking error — bundling regression"
             exit 1
           fi
-          echo "✅ tarball launched without libmpv/symbol errors"
+          echo "✅ tarball launched without dynamic-linking errors"
