@@ -183,7 +183,7 @@ jobs:
           LIBDIR="$STAGE/lib"
 
           # Libraries the target already provides — bundling these is harmful:
-          # GPU/Vulkan/VAAPI drivers MUST match the host, and a bundled (older)
+          # GPU/Vulkan drivers MUST match the host, and a bundled (older)
           # GLib/GStreamer shadows the host's and breaks the GStreamer plugins
           # audioplayers_linux loads at startup (AppFlowy issue #8763). Anything
           # NOT matched here is the ffmpeg/mpv media stack, whose SONAMEs are
@@ -192,7 +192,7 @@ jobs:
             case "$1" in
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
               libstdc++.so*|libgcc_s.so*) return 0;;
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*|libva*) return 0;;
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*) return 0;;
@@ -687,17 +687,17 @@ jobs:
           test -x AppFlowy/AppFlowy        || { echo "::error::AppFlowy binary missing"; exit 1; }
           test -e AppFlowy/lib/libmpv.so.1 || { echo "::error::libmpv.so.1 was not bundled into the tarball"; exit 1; }
 
-          # Deterministic, install-free gate: every library libmpv.so.1 and the
-          # media_kit video plugin NEED must be either bundled next to them or a
+          # Deterministic, install-free gate: every library in the libmpv/plugin
+          # dependency tree must be either bundled next to them or a
           # genuinely-always-present host lib (GPU driver / display / GLib /
           # audio server client / core toolchain). Anything else (e.g.
-          # libjack.so.0, libsndio.so.1) missing from lib/ is a bundling bug
-          # that would crash on hosts/flatpak runtimes lacking it. This catches
-          # the failure class the runtime launch below can miss.
+          # libjack.so.0, libsndio.so.1, libva.so.2) missing from lib/ is a
+          # bundling bug that would crash on hosts/flatpak runtimes lacking it.
+          # This catches the failure class the runtime launch below can miss.
           is_host_lib() {
             case "$1" in
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*|libstdc++.so*|libgcc_s.so*) return 0;;
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*|libva*) return 0;;
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libepoxy*|libharfbuzz*|libfreetype*|libfontconfig*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
@@ -707,16 +707,27 @@ jobs:
               *) return 1;;
             esac
           }
+          declare -A seen=()
           fail=0
-          for so in libmpv.so.1 libmedia_kit_video_plugin.so; do
+          scan_needed() {
+            local so="$1"
+            local parent="${2:-root}"
+            [ -n "$so" ] || return 0
+            is_host_lib "$so" && return 0
+            if [ ! -e "AppFlowy/lib/$so" ]; then
+              echo "::error::AppFlowy/lib/$parent NEEDs '$so' but it is neither bundled nor a host lib"
+              fail=1
+              return 0
+            fi
+            [ -z "${seen[$so]:-}" ] || return 0
+            seen[$so]=1
+            local n
             while read -r n; do
-              [ -n "$n" ] || continue
-              is_host_lib "$n" && continue
-              if [ ! -e "AppFlowy/lib/$n" ]; then
-                echo "::error::AppFlowy/lib/$so NEEDs '$n' but it is neither bundled nor a host lib"; fail=1
-              fi
+              scan_needed "$n" "$so"
             done < <(readelf -d "AppFlowy/lib/$so" | sed -n 's/.*NEEDED.*\[\(.*\)\].*/\1/p')
-          done
+          }
+          scan_needed libmpv.so.1
+          scan_needed libmedia_kit_video_plugin.so
           [ "$fail" -eq 0 ] || { echo "::error::tarball is not self-contained — see missing libs above"; exit 1; }
           echo "✅ static check: libmpv closure is self-contained"
 
