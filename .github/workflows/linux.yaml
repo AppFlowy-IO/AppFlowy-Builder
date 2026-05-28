@@ -653,9 +653,17 @@ jobs:
         run: |
           sudo apt-get update
           # GTK + GL + the host GStreamer stack audioplayers_linux loads at
-          # startup. libmpv is intentionally omitted: the tarball must supply it.
+          # startup, plus the two GTK-ecosystem libs AppFlowy hard-NEEDs at
+          # launch (libkeybinder for global hotkeys, libnotify for tray/
+          # notifications). These are host-provided, exactly like libgtk-3-0:
+          # the .deb declares them in Depends and the AppImage lists them under
+          # include, so they're never bundled. Omitting them here aborts the
+          # loader on libkeybinder-3.0.so.0 before the libmpv gate is reached.
+          # libmpv is the ONLY lib intentionally omitted: the tarball must
+          # supply it.
           sudo apt-get install -y --no-install-recommends \
             xvfb libgtk-3-0 libgl1 libegl1 \
+            libkeybinder-3.0-0 libnotify4 \
             libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
