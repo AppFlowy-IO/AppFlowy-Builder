@@ -37,7 +37,9 @@ on:
         default: "AppFlowy"
 
 env:
-  FLUTTER_VERSION: "3.41.9"
+  # Must match AppFlowy main's Flutter version — this workflow runs
+  # `flutter pub get` against AppFlowy's pubspec.
+  FLUTTER_VERSION: "3.27.4"
   RUST_TOOLCHAIN: "1.92.0"
 
 jobs:
