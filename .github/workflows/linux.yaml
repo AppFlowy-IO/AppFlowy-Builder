@@ -191,7 +191,7 @@ jobs:
           is_host_lib() {
             case "$1" in
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
-              libstdc++.so*|libgcc_s.so*) return 0;;
+              libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
               libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
@@ -696,14 +696,22 @@ jobs:
           # This catches the failure class the runtime launch below can miss.
           is_host_lib() {
             case "$1" in
-              ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*|libstdc++.so*|libgcc_s.so*) return 0;;
+              # Keep this allowlist in sync with the bundling step's is_host_lib
+              # (the "Archive Asset" step above): anything the bundler treats as
+              # host-provided must be accepted here too, or this gate flags libs
+              # that were intentionally left unbundled (kerberos/gssapi, lz4,
+              # libunwind — all ubiquitous low-level system libs).
+              ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
+              libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
               libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
-              libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libepoxy*|libharfbuzz*|libfreetype*|libfontconfig*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
+              libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*|libepoxy*) return 0;;
+              libfontconfig*|libfreetype*|libharfbuzz*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
               libpulse*|libasound*|libpipewire-*) return 0;;
-              libdbus-1*|libsystemd*|libudev*|libelf*|libz.so*|libbz2*|liblzma*|libzstd*|libexpat*|libffi*|libpcre*|libuuid*|libgcrypt*|libgpg-error*) return 0;;
-              libgnutls*|libssl*|libcrypto*|libtasn1*|libnettle*|libhogweed*|libgmp*|libp11-kit*|libidn2*|libunistring*) return 0;;
+              libdbus-1*|libsystemd*|libudev*|libelf*) return 0;;
+              libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
+              libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
               *) return 1;;
             esac
           }
