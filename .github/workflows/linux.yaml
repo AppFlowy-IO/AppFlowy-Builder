@@ -230,11 +230,10 @@ jobs:
 
           chmod -R u+w "$LIBDIR"
 
-          # Make libmpv resolve from the bundle dir at runtime:
-          #  - libmedia_kit_video_plugin.so hard-NEEDs libmpv.so.1 but carries a
-          #    stale CI RUNPATH; libapp.so dlopen()s "libmpv.so.1". Both must
-          #    search $ORIGIN.
-          #  - each bundled media lib resolves its siblings via $ORIGIN.
+          # Make every bundled ELF resolve sibling media libs from the bundle
+          # dir at runtime. media_kit can ship its own libmpv SONAME (currently
+          # libmpv.so.2), while the injected system libmpv uses libmpv.so.1; both
+          # need the same $ORIGIN search path for deps such as libva.so.2.
           for f in libmedia_kit_video_plugin.so libapp.so libmpv.so.1; do
             [ -e "$LIBDIR/$f" ] && patchelf --set-rpath '$ORIGIN' "$LIBDIR/$f"
           done
@@ -243,6 +242,10 @@ jobs:
             is_host_lib "$soname" && continue
             [ -e "$LIBDIR/$soname" ] && patchelf --set-rpath '$ORIGIN' "$LIBDIR/$soname"
           done <<< "$CLOSURE"
+          for f in "$LIBDIR"/*.so "$LIBDIR"/*.so.*; do
+            [ -e "$f" ] || continue
+            patchelf --set-rpath '$ORIGIN' "$f"
+          done
 
           echo "---- bundled media libs ----"
           ls -1 "$LIBDIR" | grep -E 'libmpv|libav|libass|libplacebo|libsw|libpostproc' || true
@@ -688,7 +691,7 @@ jobs:
           test -e AppFlowy/lib/libmpv.so.1 || { echo "::error::libmpv.so.1 was not bundled into the tarball"; exit 1; }
 
           # Deterministic, install-free gate: every library in the libmpv/plugin
-          # dependency tree must be either bundled next to them or a
+          # dependency tree must be either resolvable from the bundle dir or a
           # genuinely-always-present host lib (GPU driver / display / GLib /
           # audio server client / core toolchain). Anything else (e.g.
           # libjack.so.0, libsndio.so.1, libva.so.2) missing from lib/ is a
@@ -729,12 +732,36 @@ jobs:
             fi
             [ -z "${seen[$so]:-}" ] || return 0
             seen[$so]=1
+
+            local needed=()
             local n
             while read -r n; do
-              scan_needed "$n" "$so"
+              [ -n "$n" ] && needed+=("$n")
             done < <(readelf -d "AppFlowy/lib/$so" | sed -n 's/.*NEEDED.*\[\(.*\)\].*/\1/p')
+
+            local needs_origin=0
+            for n in "${needed[@]}"; do
+              if ! is_host_lib "$n"; then
+                needs_origin=1
+                break
+              fi
+            done
+            if [ "$needs_origin" -eq 1 ] && ! readelf -d "AppFlowy/lib/$so" | grep -Eq '(RPATH|RUNPATH).*\$ORIGIN'; then
+              echo "::error::AppFlowy/lib/$so has bundled non-host deps but no \$ORIGIN RPATH/RUNPATH"
+              fail=1
+            fi
+
+            for n in "${needed[@]}"; do
+              scan_needed "$n" "$so"
+            done
           }
-          scan_needed libmpv.so.1
+          found_mpv=0
+          for mpv in AppFlowy/lib/libmpv.so.*; do
+            [ -e "$mpv" ] || continue
+            found_mpv=1
+            scan_needed "$(basename "$mpv")"
+          done
+          [ "$found_mpv" -eq 1 ] || { echo "::error::no libmpv shared library was bundled into the tarball"; exit 1; }
           scan_needed libmedia_kit_video_plugin.so
           [ "$fail" -eq 0 ] || { echo "::error::tarball is not self-contained — see missing libs above"; exit 1; }
           echo "✅ static check: libmpv closure is self-contained"
