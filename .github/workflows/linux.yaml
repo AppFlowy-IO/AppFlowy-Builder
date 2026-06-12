@@ -212,7 +212,12 @@ jobs:
               # them yet they're frequently absent, so they must be bundled
               # (mpv never actually uses them at runtime; pulse/pipewire wins).
               libpulse*|libasound*|libpipewire-*) return 0;;
-              libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
+              # NOTE: libbz2 is deliberately NOT treated as host-provided.
+              # The bundled libavformat/libarchive NEED libbz2.so.1.0 (Debian
+              # SONAME), which Fedora (libbz2.so.1) and the freedesktop flatpak
+              # runtime no longer provide, so it must be bundled. See AppFlowy
+              # issue #8793.
+              libz.so*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
               libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
               *) return 1;;
             esac
@@ -724,7 +729,7 @@ jobs:
               libfontconfig*|libfreetype*|libharfbuzz*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
               libpulse*|libasound*|libpipewire-*) return 0;;
               libdbus-1*|libsystemd*|libudev*|libelf*) return 0;;
-              libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
+              libz.so*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
               libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
               *) return 1;;
             esac
