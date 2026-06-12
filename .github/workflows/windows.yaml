@@ -120,6 +120,34 @@ jobs:
           cargo make --env APP_VERSION=${{ inputs.build_name }} --profile production-windows-x86 appflowy
           dart ./scripts/flutter_release_build/build_flowy.dart include-directives . ${{ inputs.build_name }}
 
+      # The Windows flutter-build runs through duckscript `exec cmd.exe /c flutter build`,
+      # which does NOT propagate a non-zero exit code, and `copy-to-product-windows`'s
+      # `glob_cp` silently copies nothing when its source glob matches no files. So a
+      # failed `flutter build windows` makes the step above go green while producing no
+      # app output, and the failure only surfaces later as a cryptic "directory is
+      # invalid" in the Copy step. This step prints the real build/output tree and fails
+      # loudly here, right after the build, with a pointer to the actual error.
+      - name: Diagnose Windows build output
+        run: |
+          Write-Host "===== flutter build\windows tree ====="
+          if (Test-Path "frontend\appflowy_flutter\build\windows") {
+            Get-ChildItem -Recurse -Directory "frontend\appflowy_flutter\build\windows" | Select-Object -ExpandProperty FullName
+          } else {
+            Write-Host "build\windows does NOT exist - flutter build windows produced no output"
+          }
+          Write-Host "===== product tree ($env:WINDOWS_APP_RELEASE_PATH) ====="
+          if (Test-Path "$env:WINDOWS_APP_RELEASE_PATH") {
+            Get-ChildItem -Recurse "$env:WINDOWS_APP_RELEASE_PATH" | Select-Object -ExpandProperty FullName
+          } else {
+            Write-Host "$env:WINDOWS_APP_RELEASE_PATH does NOT exist"
+          }
+          $expected = "$env:WINDOWS_APP_RELEASE_PATH\AppFlowy"
+          if (-not (Test-Path $expected)) {
+            Write-Error "Expected app output directory '$expected' was not created. 'flutter build windows' or the copy-to-product-windows cargo-make task failed silently - check the 'Build Windows app' logs above for the real flutter build error."
+            exit 1
+          }
+          Write-Host "OK: $expected exists"
+
       - name: Copy Visual C++ redistributables
         run: |
           Copy-Item "C:\Windows\System32\msvcp140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"

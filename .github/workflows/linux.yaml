@@ -192,7 +192,15 @@ jobs:
             case "$1" in
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
               libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
+              # libvdpau.so.1 is deliberately NOT treated as host here: it's a
+              # vendor-neutral VDPAU dispatcher that libav*/libmpv hard-NEED, but
+              # it is absent on minimal hosts (e.g. headless ubuntu-24.04), so a
+              # bare tarball that doesn't bundle it crashes at launch with
+              # "libvdpau.so.1: cannot open shared object file". The actual
+              # GPU-specific backend (libvdpau_nvidia.so, ...) is dlopen'd from
+              # the host vdpau dir at runtime, not NEEDED, so bundling only the
+              # wrapper is safe (worst case: software fallback, never a crash).
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*) return 0;;
@@ -706,7 +714,10 @@ jobs:
               # libunwind — all ubiquitous low-level system libs).
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
               libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
+              # libvdpau* intentionally removed (kept in sync with the bundling
+              # step's is_host_lib): libvdpau.so.1 is now bundled, so the static
+              # check must REQUIRE it in lib/ rather than accept it as host.
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*|libepoxy*) return 0;;
