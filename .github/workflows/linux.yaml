@@ -192,15 +192,7 @@ jobs:
             case "$1" in
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
               libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
-              # libvdpau.so.1 is deliberately NOT treated as host here: it's a
-              # vendor-neutral VDPAU dispatcher that libav*/libmpv hard-NEED, but
-              # it is absent on minimal hosts (e.g. headless ubuntu-24.04), so a
-              # bare tarball that doesn't bundle it crashes at launch with
-              # "libvdpau.so.1: cannot open shared object file". The actual
-              # GPU-specific backend (libvdpau_nvidia.so, ...) is dlopen'd from
-              # the host vdpau dir at runtime, not NEEDED, so bundling only the
-              # wrapper is safe (worst case: software fallback, never a crash).
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvulkan*) return 0;;
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*) return 0;;
@@ -601,7 +593,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             xvfb libgtk-3-0 \
             libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            libxv1 libxss1 libxcb-shape0 libxcb-xfixes0 \
+            libvdpau1 libva2 libva-drm2 libva-x11-2
 
       - name: Download AppImage artifact
         uses: actions/download-artifact@v4
@@ -672,11 +666,20 @@ jobs:
           # loader on libkeybinder-3.0.so.0 before the libmpv gate is reached.
           # libmpv is the ONLY lib intentionally omitted: the tarball must
           # supply it.
+          # The X11/video-extension libs below are hard-NEEDED by the bundled
+          # ffmpeg/mpv stack (libavdevice -> Xv, libav* -> vdpau/va, mpv -> Xss)
+          # even though AppFlowy never uses those output/decode paths (it renders
+          # video through media_kit's render API). They are host-provided on every
+          # real desktop and in the Flathub freedesktop runtime, so is_host_lib
+          # correctly leaves them unbundled; this minimal CI host just has to
+          # supply them like it already supplies libgtk-3-0 / libgl1 / libegl1.
           sudo apt-get install -y --no-install-recommends \
             xvfb libgtk-3-0 libgl1 libegl1 \
             libkeybinder-3.0-0 libnotify4 \
             libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            libxv1 libxss1 libxcb-shape0 libxcb-xfixes0 \
+            libvdpau1 libva2 libva-drm2 libva-x11-2
 
       - name: Download tarball artifact
         uses: actions/download-artifact@v4
@@ -714,10 +717,7 @@ jobs:
               # libunwind — all ubiquitous low-level system libs).
               ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
               libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
-              # libvdpau* intentionally removed (kept in sync with the bundling
-              # step's is_host_lib): libvdpau.so.1 is now bundled, so the static
-              # check must REQUIRE it in lib/ rather than accept it as host.
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvulkan*) return 0;;
+              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
               libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
               libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
               libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*|libepoxy*) return 0;;
