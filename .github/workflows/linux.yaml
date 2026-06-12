@@ -595,7 +595,8 @@ jobs:
             libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             libxv1 libxss1 libxcb-shape0 libxcb-xfixes0 \
-            libvdpau1 libva2 libva-drm2 libva-x11-2
+            libvdpau1 libva2 libva-drm2 libva-x11-2 \
+            libgles2 libgl1-mesa-dri
 
       - name: Download AppImage artifact
         uses: actions/download-artifact@v4
@@ -679,7 +680,8 @@ jobs:
             libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
             libxv1 libxss1 libxcb-shape0 libxcb-xfixes0 \
-            libvdpau1 libva2 libva-drm2 libva-x11-2
+            libvdpau1 libva2 libva-drm2 libva-x11-2 \
+            libgles2 libgl1-mesa-dri
 
       - name: Download tarball artifact
         uses: actions/download-artifact@v4
