@@ -64,6 +64,9 @@ jobs:
       # removed" and produces no runner\Release output. CMake >=3.31 reads this
       # env var to restore the old-minimum behavior for every configure at once.
       CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+      # MSVC 14.51 on windows-latest turns /await + <experimental/coroutine>
+      # usage in several Flutter Windows plugins into STL1011 hard errors.
+      CL: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
 
     runs-on: windows-latest
 
