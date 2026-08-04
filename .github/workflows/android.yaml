@@ -168,7 +168,7 @@ jobs:
         run: |
           rustup target install aarch64-linux-android
           cargo install duckscript_cli --force --locked
-          cargo install --version 3.3.0 cargo-ndk --locked
+          cargo install --version 4.1.2 cargo-ndk --locked
           sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
           sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
           sudo apt-get update
@@ -206,6 +206,10 @@ jobs:
 
       - name: Build AppFlowy
         working-directory: frontend
+        env:
+          # Match the app's minSdkVersion. RocksDB 10.4 requires Android API 23+
+          # for POSIX_MADV_* definitions, while cargo-ndk otherwise defaults to 21.
+          CARGO_NDK_PLATFORM: "29"
         run: |
           cargo make --profile production-android appflowy-core-dev-android
           cargo make --profile production-android code_generation
