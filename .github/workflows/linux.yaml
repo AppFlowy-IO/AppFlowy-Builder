@@ -451,6 +451,74 @@ jobs:
             touch "AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
           fi
 
+      # Re-package with the new appimagetool to remove libfuse2 dependency.
+      # The old appimage-builder v1.1.0 uses an outdated runtime that requires
+      # libfuse2 at runtime. The new appimagetool uses the type2-runtime which
+      # has FUSE support statically linked — no external libfuse2 needed.
+      # Note: the new runtime still needs the system fusermount binary to
+      # mount via FUSE (present on all desktop Linux installs).
+      # This is a separate step so CI fails visibly if re-packaging breaks.
+      # See: https://github.com/AppFlowy-IO/AppFlowy/issues/8967
+      - name: Re-package AppImage with new runtime (no libfuse2)
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          APPIMAGE_BUILT=$(ls AppFlowy-*-x86_64.AppImage 2>/dev/null | head -n1)
+          if [ -z "$APPIMAGE_BUILT" ]; then
+            echo "⚠️ No AppImage to re-package (build may have failed) — skipping"
+            exit 0
+          fi
+          echo "🔄 Re-packaging $APPIMAGE_BUILT with new runtime..."
+          # Extract the AppDir from the old AppImage (--appimage-extract does NOT
+          # need FUSE — it reads the squashfs directly without mounting)
+          APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE_BUILT" --appimage-extract
+          # Fix .desktop: appimagetool rejects Icon with file extension
+          DESKTOP_FILE=$(find squashfs-root -maxdepth 1 -name '*.desktop' | head -n1)
+          if [ -n "$DESKTOP_FILE" ]; then
+            sed -i 's/Icon=appflowy\.svg/Icon=appflowy/' "$DESKTOP_FILE"
+            # Verify the fix actually applied
+            if grep -q 'Icon=appflowy\.svg' "$DESKTOP_FILE"; then
+              echo "::error::Failed to fix Icon field in .desktop file"
+              exit 1
+            fi
+          else
+            echo "::error::No .desktop file found in extracted AppDir"
+            exit 1
+          fi
+          # Ensure icon is in the hicolor path appimagetool expects
+          mkdir -p squashfs-root/usr/share/icons/hicolor/scalable/apps
+          cp squashfs-root/appflowy.svg squashfs-root/usr/share/icons/hicolor/scalable/apps/
+          # Download appimagetool (latest; statically-linked type2-runtime)
+          APPIMAGETOOL="./appimagetool-x86_64.AppImage"
+          if [ ! -x "$APPIMAGETOOL" ]; then
+            wget -q -O "$APPIMAGETOOL" \
+              https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage
+            chmod +x "$APPIMAGETOOL"
+          fi
+          # Re-package to a temp file first (atomic — original preserved on failure)
+          APPIMAGE_TEMP="${APPIMAGE_BUILT}.new"
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
+            "$APPIMAGETOOL" squashfs-root "$APPIMAGE_TEMP"
+          # Verify: the new AppImage must NOT reference libfuse.so.2.
+          # If it does, re-packaging silently used the wrong runtime.
+          # Note: 'strings' comes from binutils (always present on ubuntu runners)
+          if ! command -v strings >/dev/null 2>&1; then
+            echo "::error::'strings' command not found — install binutils"
+            exit 1
+          fi
+          if strings "$APPIMAGE_TEMP" | grep -q 'libfuse\.so\.2'; then
+            echo "::error::Re-packaged AppImage still references libfuse.so.2 — wrong runtime?"
+            rm -f "$APPIMAGE_TEMP"
+            rm -rf squashfs-root
+            exit 1
+          fi
+          # Atomic replacement: only delete original after new one is verified
+          rm -f "$APPIMAGE_BUILT"
+          mv "$APPIMAGE_TEMP" "$APPIMAGE_BUILT"
+          rm -rf squashfs-root
+          echo "✅ AppImage re-packaged without libfuse2 dependency"
+          ls -la "$APPIMAGE_BUILT"
+
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
