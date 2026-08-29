@@ -444,6 +444,32 @@ jobs:
             # appimage-builder emits AppFlowy-<version>-x86_64.AppImage in CWD
             # (frontend), which is exactly where the upload step looks.
             ls -la AppFlowy-*-x86_64.AppImage
+
+            # Re-package with the new appimagetool to remove libfuse2 dependency.
+            # The old appimage-builder v1.1.0 uses an outdated runtime that requires
+            # libfuse2. The new appimagetool downloads the latest type2-runtime
+            # with FUSE 3 built-in, so end users no longer need libfuse2.
+            # See: https://github.com/AppFlowy-IO/AppFlowy/issues/8967
+            APPIMAGE_BUILT=$(ls AppFlowy-*-x86_64.AppImage | head -n1)
+            if [ -n "$APPIMAGE_BUILT" ]; then
+              echo "🔄 Re-packaging AppImage with new runtime (no libfuse2)..."
+              # Extract the AppDir from the old AppImage
+              APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE_BUILT" --appimage-extract
+              rm -f "$APPIMAGE_BUILT"
+              # Download appimagetool (latest, uses type2-runtime with FUSE 3)
+              APPIMAGETOOL="./appimagetool-x86_64.AppImage"
+              if [ ! -x "$APPIMAGETOOL" ]; then
+                wget -q -O "$APPIMAGETOOL" \
+                  https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage
+                chmod +x "$APPIMAGETOOL"
+              fi
+              # Re-package — the new runtime has FUSE 3 built-in
+              ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
+                "$APPIMAGETOOL" squashfs-root "$APPIMAGE_BUILT"
+              rm -rf squashfs-root
+              echo "✅ AppImage re-packaged without libfuse2 dependency"
+              ls -la "$APPIMAGE_BUILT"
+            fi
           else
             echo "⚠️ AppImage build failed, but continuing..."
             # Create a dummy AppImage file to prevent upload failures
