@@ -127,10 +127,8 @@ jobs:
           # Install libunwind-dev first to resolve dependency issues
           sudo apt-get -y install libunwind-dev
           sudo apt-get -y install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
-          # Install FUSE for AppImage support
-          sudo apt-get install -y fuse libfuse2
           # dpkg-shlibdeps (dpkg-dev) computes the .deb runtime dependencies;
-          # the rest are tools appimage-builder shells out to while assembling
+          # the rest are tools appimagetool shells out to while assembling
           # the AppImage.
           sudo apt-get install -y dpkg-dev patchelf desktop-file-utils libgtk-3-bin squashfs-tools zsync gnupg fakeroot strace
           source $HOME/.cargo/env
@@ -346,107 +344,56 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          echo "📦 Building AppImage with appimage-builder (auto-bundles libmpv & its deps)..."
+          echo "📦 Building AppImage with appimagetool (no libfuse2 dependency)..."
 
-          # Enable FUSE user space file systems
-          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+          # Prepare AppDir from the Flutter build output
+          rm -rf AppDir || true
+          cp -r appflowy_flutter/build/linux/x64/release/bundle AppDir
+          mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
+          cp scripts/linux_distribution/packaging/appflowy.svg AppDir/usr/share/icons/hicolor/scalable/apps/
 
-          # Download and bundle libmpv from Ubuntu jammy BEFORE appimage-builder runs.
-          # media_kit loads libmpv.so.1 at runtime via dlopen, which appimage-builder's
-          # ELF scanner may miss. We pre-bundle it to guarantee it's in the AppImage.
+          # Bundle libmpv from Ubuntu jammy — media_kit loads it via dlopen
           LIBMPV_DEB="/tmp/libmpv1.AppImage.bundle.deb"
           mkdir -p /tmp/libmpv-AppImage
           wget -q -O "$LIBMPV_DEB" \
             http://archive.ubuntu.com/ubuntu/pool/universe/m/mpv/libmpv1_0.34.1-1ubuntu3_amd64.deb
           dpkg-deb -x "$LIBMPV_DEB" /tmp/libmpv-AppImage/extracted
+          mkdir -p AppDir/usr/lib/x86_64-linux-gnu
+          cp -r /tmp/libmpv-AppImage/extracted/usr/lib/x86_64-linux-gnu/* AppDir/usr/lib/x86_64-linux-gnu/
 
-          # Generate the appimage-builder recipe. appimage-builder scans every
-          # ELF in the bundle, resolves each NEEDED library (incl. the media_kit
-          # plugin's libmpv.so.1 and its ffmpeg/libass/... tree) to an apt
-          # package, bundles them, and generates a runtime that wires up the
-          # library path. This is the approach the public AppFlowy repo uses.
-          # libmpv is also listed explicitly so the result is correct even if
-          # auto-detection is skipped. ${{ inputs.build_name }} is the version.
-          cat > AppImageBuilder.yml <<'YML'
-          version: 1
-          script:
-            - rm -rf AppDir || true
-            - cp -r appflowy_flutter/build/linux/x64/release/bundle AppDir
-            - mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-            - cp scripts/linux_distribution/packaging/appflowy.svg AppDir/usr/share/icons/hicolor/scalable/apps/
-            - mkdir -p AppDir/usr/lib/x86_64-linux-gnu
-            - cp -r /tmp/libmpv-AppImage/extracted/usr/lib/x86_64-linux-gnu/* AppDir/usr/lib/x86_64-linux-gnu/
-          AppDir:
-            path: ./AppDir
-            app_info:
-              id: io.appflowy.AppFlowy
-              name: AppFlowy
-              icon: appflowy.svg
-              version: "APPFLOWY_VERSION"
-              exec: AppFlowy
-              exec_args: $@
-            apt:
-              arch:
-                - amd64
-              allow_unauthenticated: true
-              sources:
-                - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
-                - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
-                - sourceline: deb http://security.ubuntu.com/ubuntu jammy-security main restricted universe multiverse
-              include:
-                - libc6:amd64
-                - libnotify4:amd64
-                - libkeybinder-3.0-0:amd64
-                - libwayland-cursor0:amd64
-                - libwayland-client0:amd64
-                - libwayland-egl1:amd64
-                - libmpv1:amd64
-            files:
-              include: []
-              exclude:
-                - usr/share/man
-                - usr/share/doc/*/README.*
-                - usr/share/doc/*/changelog.*
-                - usr/share/doc/*/NEWS.*
-                - usr/share/doc/*/TODO.*
-                # GLib must come from the host, not the (older, jammy) bundle.
-                # appimage-builder otherwise bundles GLib 2.72 as a transitive
-                # dep of libmpv1/libnotify4; that older GLib shadows the host's
-                # newer GLib at runtime and breaks the host GStreamer plugins
-                # that audioplayers_linux loads (e.g. libgstapp needs
-                # g_once_init_leave_pointer, added in GLib 2.80). Since we build
-                # on the oldest supported distro, the host GLib is always >= the
-                # bundled one and backward-compatible. Fixes AppFlowy issue #8763.
-                - usr/lib/x86_64-linux-gnu/libglib-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgobject-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgio-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgmodule-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgthread-2.0.so*
-                # Keep GStreamer host-provided too so its plugins stay ABI
-                # consistent with the host GLib above.
-                - usr/lib/x86_64-linux-gnu/libgst*.so*
-          AppImage:
-            arch: x86_64
-          YML
-          sed -i "s/APPFLOWY_VERSION/${{ inputs.build_name }}/" AppImageBuilder.yml
-
-          # Download appimage-builder (same version proven in the public AppFlowy repo).
-          APPIMAGE_BUILDER="./appimage-builder-x86_64.AppImage"
-          if [ ! -x "$APPIMAGE_BUILDER" ]; then
-            wget -q -O "$APPIMAGE_BUILDER" \
-              https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
-            chmod +x "$APPIMAGE_BUILDER"
+          # Ensure the desktop file and AppStream metadata are present
+          # (appimagetool requires a valid .desktop file in the AppDir)
+          if [ ! -f AppDir/AppFlowy.desktop ]; then
+            cat > AppDir/AppFlowy.desktop <<DESKTOP
+          [Desktop Entry]
+          Name=AppFlowy
+          Exec=AppFlowy
+          Icon=appflowy
+          Type=Application
+          Categories=Office;Utility;
+          DESKTOP
           fi
 
-          # APPIMAGE_EXTRACT_AND_RUN lets the builder (itself an AppImage) run
-          # where FUSE is unavailable (CI runners).
-          if APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE_BUILDER" --recipe AppImageBuilder.yml --skip-tests; then
-            # appimage-builder emits AppFlowy-<version>-x86_64.AppImage in CWD
-            # (frontend), which is exactly where the upload step looks.
-            ls -la AppFlowy-*-x86_64.AppImage
+          # Download appimagetool — uses the latest type2-runtime which has
+          # FUSE 3 built-in, eliminating the libfuse2 dependency at runtime.
+          APPIMAGETOOL="./appimagetool-x86_64.AppImage"
+          if [ ! -x "$APPIMAGETOOL" ]; then
+            wget -q -O "$APPIMAGETOOL" \
+              https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage
+            chmod +x "$APPIMAGETOOL"
+          fi
+
+          # Build the AppImage — APPIMAGE_EXTRACT_AND_RUN lets appimagetool
+          # (itself an AppImage) run where FUSE is unavailable (CI runners).
+          # The output uses the new type2-runtime with FUSE 3 built-in,
+          # so end users do NOT need libfuse2 installed.
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
+            "$APPIMAGETOOL" AppDir "${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}" || true
+
+          if [ -f "${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}" ]; then
+            ls -la "${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
           else
             echo "⚠️ AppImage build failed, but continuing..."
-            # Create a dummy AppImage file to prevent upload failures
             touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
             touch "AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
           fi
