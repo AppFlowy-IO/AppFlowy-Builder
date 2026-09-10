@@ -3,9 +3,8 @@ run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inp
 
 on:
   schedule:
-    # Daily builds at 8 AM SGT (00:00 UTC) and 4 PM SGT (08:00 UTC)
-    - cron: '0 0 * * *'  # 8 AM SGT
-    - cron: '0 8 * * *'  # 4 PM SGT
+    # Daily build at 11 AM SGT (03:00 UTC)
+    - cron: '0 3 * * *'  # 11 AM SGT
   workflow_dispatch:
     inputs:
       version:
