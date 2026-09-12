@@ -62,6 +62,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     env:
+      BUILD_VERSION: ${{ inputs.build_name }}
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/linux/Release
       LINUX_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-linux.tar.gz
       LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.deb
@@ -84,6 +85,13 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Checkout packaging tools
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: .builder
 
       - name: Install Rust toolchain
         id: rust_toolchain
@@ -129,10 +137,8 @@ jobs:
           sudo apt-get -y install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
           # Install FUSE for AppImage support
           sudo apt-get install -y fuse libfuse2
-          # dpkg-shlibdeps (dpkg-dev) computes the .deb runtime dependencies;
-          # the rest are tools appimage-builder shells out to while assembling
-          # the AppImage.
-          sudo apt-get install -y dpkg-dev patchelf desktop-file-utils libgtk-3-bin squashfs-tools zsync gnupg fakeroot strace
+          # Dependency calculation and direct AppImage packaging tools.
+          sudo apt-get install -y dpkg-dev patchelf file desktop-file-utils libgtk-3-bin squashfs-tools zsync gnupg fakeroot strace
           source $HOME/.cargo/env
           cargo install duckscript_cli --force --locked
           rustup target add ${{ matrix.target }}
@@ -160,175 +166,22 @@ jobs:
           cd ..
           dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
 
-      - name: Archive Asset (self-contained, bundles libmpv)
+      - name: Validate Linux bundle
+        working-directory: frontend
+        run: |
+          python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/linux_package.py" audit \
+            "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy"
+
+      - name: Archive Asset
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The raw tarball is the only Linux channel that ships no libmpv:
-          # the .deb declares libmpv1, the .rpm inherits it, the AppImage bundles
-          # it via appimage-builder. media_kit's video plugin hard-NEEDs
-          # libmpv.so.1, so a bare tarball crashes with
-          #   "libmpv.so.1: cannot open shared object file".
-          # The Flathub package just repackages THIS tarball, so it crashes too.
-          #
-          # Fix: stage a copy of the Flutter bundle and inject libmpv + its full
-          # dependency closure into lib/, then point the relevant ELFs at
-          # $ORIGIN so they resolve from the bundle. This makes the tarball (and
-          # therefore Flathub) self-contained without touching the deb/rpm/
-          # AppImage paths, which keep their own libmpv handling.
-          STAGE_PARENT="$(mktemp -d)"
-          STAGE="$STAGE_PARENT/AppFlowy"
-          cp -a AppFlowy "$STAGE"
-          LIBDIR="$STAGE/lib"
-
-          # Libraries the target already provides — bundling these is harmful:
-          # GPU/Vulkan drivers MUST match the host, and a bundled (older)
-          # GLib/GStreamer shadows the host's and breaks the GStreamer plugins
-          # audioplayers_linux loads at startup (AppFlowy issue #8763). Anything
-          # NOT matched here is the ffmpeg/mpv media stack, whose SONAMEs are
-          # locked to this runner's libmpv build, so it gets bundled.
-          is_host_lib() {
-            case "$1" in
-              ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
-              libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLESv2*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
-              libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
-              libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
-              libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*) return 0;;
-              libfontconfig*|libfreetype*|libharfbuzz*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
-              libdbus-1*|libsystemd*|libudev*|libelf*) return 0;;
-              # Audio CLIENTS that talk to the host server and are reliably
-              # present (host & flatpak runtime). NOTE: libjack/libsndio are
-              # deliberately NOT here — libmpv/libavdevice/libopenal hard-NEED
-              # them yet they're frequently absent, so they must be bundled
-              # (mpv never actually uses them at runtime; pulse/pipewire wins).
-              libpulse*|libasound*|libpipewire-*) return 0;;
-              libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
-              libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
-              *) return 1;;
-            esac
-          }
-
-          LIBMPV="$(ldconfig -p | awk '/libmpv\.so\.1/{print $NF; exit}')"
-          if [ -z "${LIBMPV:-}" ] || [ ! -e "$LIBMPV" ]; then
-            echo "::error::libmpv.so.1 not found on the build runner (is 'libmpv-dev mpv' installed?)"; exit 1
-          fi
-          cp -L "$LIBMPV" "$LIBDIR/libmpv.so.1"
-
-          # ldd is fully transitive, so one pass over libmpv yields the whole
-          # closure. Copy each NEEDED lib under its SONAME (the name left of
-          # '=>'), not its versioned real filename, so dynamic NEEDED entries
-          # resolve by name.
-          CLOSURE="$(ldd "$LIBMPV")"
-          while read -r soname arrow path _rest; do
-            [ "$arrow" = "=>" ] || continue
-            [ -n "$path" ] && [ -e "$path" ] || continue
-            is_host_lib "$soname" && continue
-            cp -L "$path" "$LIBDIR/$soname"
-          done <<< "$CLOSURE"
-
-          chmod -R u+w "$LIBDIR"
-
-          # Make every bundled ELF resolve sibling media libs from the bundle
-          # dir at runtime. media_kit can ship its own libmpv SONAME (currently
-          # libmpv.so.2), while the injected system libmpv uses libmpv.so.1; both
-          # need the same $ORIGIN search path for deps such as libva.so.2.
-          for f in libmedia_kit_video_plugin.so libapp.so libmpv.so.1; do
-            [ -e "$LIBDIR/$f" ] && patchelf --set-rpath '$ORIGIN' "$LIBDIR/$f"
-          done
-          while read -r soname arrow _path _rest; do
-            [ "$arrow" = "=>" ] || continue
-            is_host_lib "$soname" && continue
-            [ -e "$LIBDIR/$soname" ] && patchelf --set-rpath '$ORIGIN' "$LIBDIR/$soname"
-          done <<< "$CLOSURE"
-          for f in "$LIBDIR"/*.so "$LIBDIR"/*.so.*; do
-            [ -e "$f" ] || continue
-            patchelf --set-rpath '$ORIGIN' "$f"
-          done
-
-          echo "---- bundled media libs ----"
-          ls -1 "$LIBDIR" | grep -E 'libmpv|libav|libass|libplacebo|libsw|libpostproc' || true
-          echo "---- video plugin now resolves libmpv from the bundle ----"
-          ( cd "$LIBDIR" && ldd ./libmedia_kit_video_plugin.so | grep -i mpv ) || true
-
-          tar -C "$STAGE_PARENT" -czf "${{ env.LINUX_ZIP_NAME }}" AppFlowy
-
-      - name: Bundle libmpv into AppFlowy bundle
-        run: |
-          set -euo pipefail
-          # The Flutter bundle structure is:
-          # Release/
-          #   AppFlowy          <- executable
-          #   lib/              <- shared libraries (flutter build output)
-          #   libmpv/           <- our extra dir for bundled libmpv
-          BUNDLE="appflowy_flutter/product/${{ inputs.build_name }}/linux/Release"
-          mkdir -p "$BUNDLE/lib" "$BUNDLE/libmpv"
-          # Download libmpv1 from Ubuntu jammy (22.04) for maximum compatibility
-          # This ensures the .so file is bundled and doesn't rely on system packages
-          wget -q -O /tmp/libmpv1.deb \
-            http://archive.ubuntu.com/ubuntu/pool/universe/m/mpv/libmpv1_0.34.1-1ubuntu3_amd64.deb
-          ls -lh /tmp/libmpv1.deb
-          dpkg-deb -x /tmp/libmpv1.deb /tmp/libmpv-extracted
-          ls -la /tmp/libmpv-extracted/usr/lib/x86_64-linux-gnu/
-          cp -r /tmp/libmpv-extracted/usr/lib/x86_64-linux-gnu/* "$BUNDLE/lib/"
-          # Also copy to libmpv subfolder for backup
-          cp /tmp/libmpv-extracted/usr/lib/x86_64-linux-gnu/libmpv.so.1* "$BUNDLE/libmpv/" 2>/dev/null || true
-          echo "✅ libmpv bundled into $BUNDLE/lib/"
+        run: tar -czf "${{ env.LINUX_ZIP_NAME }}" AppFlowy
 
       - name: Compute .deb runtime dependencies
         working-directory: frontend
         run: |
-          set -euo pipefail
-          BUNDLE="appflowy_flutter/product/${{ inputs.build_name }}/linux/Release/AppFlowy"
-          CONTROL="scripts/linux_distribution/deb/DEBIAN/control"
-
-          if [ ! -x "$BUNDLE/AppFlowy" ]; then
-            echo "::error::AppFlowy binary not found at $BUNDLE/AppFlowy"
-            exit 1
-          fi
-          ABS_BUNDLE="$(pwd)/$BUNDLE"
-
-          # dpkg-shlibdeps maps every system shared library NEEDED by the
-          # executable and the bundled Flutter plugins (incl. media_kit ->
-          # libmpv.so.1) to its providing apt package. It expects a throwaway
-          # debian/ tree; --ignore-missing-info skips Flutter's own bundled
-          # .so files, which are not provided by any apt package.
-          WORK="$(mktemp -d)"
-          mkdir -p "$WORK/debian"
-          printf 'Source: appflowy\nMaintainer: AppFlowy\n\nPackage: appflowy\nArchitecture: amd64\nDescription: AppFlowy\n' > "$WORK/debian/control"
-
-          COMPUTED=""
-          if ( cd "$WORK" && dpkg-shlibdeps -O --ignore-missing-info \
-                 "$ABS_BUNDLE/AppFlowy" "$ABS_BUNDLE"/lib/*.so ) > "$WORK/out" 2> "$WORK/err"; then
-            COMPUTED="$(sed -n 's/^shlibs:Depends=//p' "$WORK/out")"
-          fi
-          echo "---- dpkg-shlibdeps diagnostics ----"
-          cat "$WORK/err" || true
-          echo "computed Depends: ${COMPUTED:-<none>}"
-
-          # Curated fallback covering the critical runtime libraries, used only
-          # if shlibdeps fails outright. libmpv is NO LONGER listed here because
-          # we now bundle it inside the .deb - no external dependency needed.
-          ESSENTIAL="libgtk-3-0, libkeybinder-3.0-0, libnotify4, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, libasound2"
-
-          if [ -n "$COMPUTED" ]; then
-            DEPS="$COMPUTED"
-          else
-            echo "::warning::dpkg-shlibdeps produced no output; using curated dependency list"
-            DEPS="$ESSENTIAL"
-          fi
-          # Remove any libmpv reference from computed deps since we bundle it
-          DEPS="$(echo "$DEPS" | sed 's/libmpv1,//g' | sed 's/,libmpv1//g' | sed 's/libmpv2,//g' | sed 's/,libmpv2//g')"
-
-          python3 - "$CONTROL" "$DEPS" <<'PY'
-          import re, sys
-          path, deps = sys.argv[1], sys.argv[2]
-          text = open(path).read()
-          text = re.sub(r'(?m)^Depends:.*$', 'Depends: ' + deps, text, count=1)
-          open(path, 'w').write(text)
-          print("patched control ->", "Depends: " + deps)
-          PY
+          python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/linux_package.py" depends \
+            "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy" \
+            --control scripts/linux_distribution/deb/DEBIAN/control
 
       - name: Build Linux package (.deb)
         working-directory: frontend
@@ -343,113 +196,23 @@ jobs:
 
       - name: Build Linux package (.AppImage)
         working-directory: frontend
-        continue-on-error: true
         run: |
           set -euo pipefail
-          echo "📦 Building AppImage with appimage-builder (auto-bundles libmpv & its deps)..."
+          # Package the audited CMake payload. Resolving mpv again with apt
+          # would reintroduce build-host libraries into a second library tree.
+          bash scripts/linux_distribution/appimage/build_appimage.sh \
+            "$BUILD_VERSION" \
+            "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy"
+          python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/linux_package.py" audit AppDir
+          test -s "AppFlowy-$BUILD_VERSION-x86_64.AppImage"
 
-          # Enable FUSE user space file systems
-          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
-
-          # Download and bundle libmpv from Ubuntu jammy BEFORE appimage-builder runs.
-          # media_kit loads libmpv.so.1 at runtime via dlopen, which appimage-builder's
-          # ELF scanner may miss. We pre-bundle it to guarantee it's in the AppImage.
-          LIBMPV_DEB="/tmp/libmpv1.AppImage.bundle.deb"
-          mkdir -p /tmp/libmpv-AppImage
-          wget -q -O "$LIBMPV_DEB" \
-            http://archive.ubuntu.com/ubuntu/pool/universe/m/mpv/libmpv1_0.34.1-1ubuntu3_amd64.deb
-          dpkg-deb -x "$LIBMPV_DEB" /tmp/libmpv-AppImage/extracted
-
-          # Generate the appimage-builder recipe. appimage-builder scans every
-          # ELF in the bundle, resolves each NEEDED library (incl. the media_kit
-          # plugin's libmpv.so.1 and its ffmpeg/libass/... tree) to an apt
-          # package, bundles them, and generates a runtime that wires up the
-          # library path. This is the approach the public AppFlowy repo uses.
-          # libmpv is also listed explicitly so the result is correct even if
-          # auto-detection is skipped. ${{ inputs.build_name }} is the version.
-          cat > AppImageBuilder.yml <<'YML'
-          version: 1
-          script:
-            - rm -rf AppDir || true
-            - cp -r appflowy_flutter/build/linux/x64/release/bundle AppDir
-            - mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-            - cp scripts/linux_distribution/packaging/appflowy.svg AppDir/usr/share/icons/hicolor/scalable/apps/
-            - mkdir -p AppDir/usr/lib/x86_64-linux-gnu
-            - cp -r /tmp/libmpv-AppImage/extracted/usr/lib/x86_64-linux-gnu/* AppDir/usr/lib/x86_64-linux-gnu/
-          AppDir:
-            path: ./AppDir
-            app_info:
-              id: io.appflowy.AppFlowy
-              name: AppFlowy
-              icon: appflowy.svg
-              version: "APPFLOWY_VERSION"
-              exec: AppFlowy
-              exec_args: $@
-            apt:
-              arch:
-                - amd64
-              allow_unauthenticated: true
-              sources:
-                - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse
-                - sourceline: deb http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse
-                - sourceline: deb http://security.ubuntu.com/ubuntu jammy-security main restricted universe multiverse
-              include:
-                - libc6:amd64
-                - libnotify4:amd64
-                - libkeybinder-3.0-0:amd64
-                - libwayland-cursor0:amd64
-                - libwayland-client0:amd64
-                - libwayland-egl1:amd64
-                - libmpv1:amd64
-            files:
-              include: []
-              exclude:
-                - usr/share/man
-                - usr/share/doc/*/README.*
-                - usr/share/doc/*/changelog.*
-                - usr/share/doc/*/NEWS.*
-                - usr/share/doc/*/TODO.*
-                # GLib must come from the host, not the (older, jammy) bundle.
-                # appimage-builder otherwise bundles GLib 2.72 as a transitive
-                # dep of libmpv1/libnotify4; that older GLib shadows the host's
-                # newer GLib at runtime and breaks the host GStreamer plugins
-                # that audioplayers_linux loads (e.g. libgstapp needs
-                # g_once_init_leave_pointer, added in GLib 2.80). Since we build
-                # on the oldest supported distro, the host GLib is always >= the
-                # bundled one and backward-compatible. Fixes AppFlowy issue #8763.
-                - usr/lib/x86_64-linux-gnu/libglib-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgobject-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgio-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgmodule-2.0.so*
-                - usr/lib/x86_64-linux-gnu/libgthread-2.0.so*
-                # Keep GStreamer host-provided too so its plugins stay ABI
-                # consistent with the host GLib above.
-                - usr/lib/x86_64-linux-gnu/libgst*.so*
-          AppImage:
-            arch: x86_64
-          YML
-          sed -i "s/APPFLOWY_VERSION/${{ inputs.build_name }}/" AppImageBuilder.yml
-
-          # Download appimage-builder (same version proven in the public AppFlowy repo).
-          APPIMAGE_BUILDER="./appimage-builder-x86_64.AppImage"
-          if [ ! -x "$APPIMAGE_BUILDER" ]; then
-            wget -q -O "$APPIMAGE_BUILDER" \
-              https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
-            chmod +x "$APPIMAGE_BUILDER"
-          fi
-
-          # APPIMAGE_EXTRACT_AND_RUN lets the builder (itself an AppImage) run
-          # where FUSE is unavailable (CI runners).
-          if APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE_BUILDER" --recipe AppImageBuilder.yml --skip-tests; then
-            # appimage-builder emits AppFlowy-<version>-x86_64.AppImage in CWD
-            # (frontend), which is exactly where the upload step looks.
-            ls -la AppFlowy-*-x86_64.AppImage
-          else
-            echo "⚠️ AppImage build failed, but continuing..."
-            # Create a dummy AppImage file to prevent upload failures
-            touch "${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
-            touch "AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
-          fi
+      - name: Upload packaging test tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packaging-test-tools
+          path: .builder/.github/scripts/linux_*.py
+          include-hidden-files: true
+          if-no-files-found: error
 
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
@@ -457,63 +220,11 @@ jobs:
           name: ${{ env.LINUX_ZIP_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_ZIP_NAME }}
 
-      - name: Upload ZIP to Release
-        if: inputs.upload_url != ''
-        run: |
-          filename="${{ env.LINUX_ZIP_NAME }}"
-          filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
-
-          # URL encode the filename
-          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-
-          # Remove the {?name,label} template from upload URL if present
-          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-
-          echo "Uploading $filename to release..."
-
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$filepath" \
-            "${upload_url}?name=${encoded_filename}" \
-            --fail-with-body
-
-      - name: Upload Linux package
-        working-directory: frontend
-        run: |
-          ls -a
-
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LINUX_PACKAGE_APPIMAGE_NAME}}
           path: frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage
-
-      - name: Upload AppImage to Release
-        continue-on-error: true
-        if: inputs.upload_url != ''
-        run: |
-          filename="${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}"
-          filepath="frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage"
-
-          # URL encode the filename
-          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-
-          # Remove the {?name,label} template from upload URL if present
-          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-
-          echo "Uploading $filename to release..."
-
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$filepath" \
-            "${upload_url}?name=${encoded_filename}" \
-            --fail-with-body
 
       - name: Upload RPM
         uses: actions/upload-artifact@v4
@@ -521,278 +232,183 @@ jobs:
           name: ${{ env.LINUX_PACKAGE_RPM_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_RPM_NAME }}
 
-      - name: Upload RPM to Release
-        if: inputs.upload_url != ''
-        run: |
-          filename="${{ env.LINUX_PACKAGE_RPM_NAME }}"
-          filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
-
-          # URL encode the filename
-          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-
-          # Remove the {?name,label} template from upload URL if present
-          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-
-          echo "Uploading $filename to release..."
-
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$filepath" \
-            "${upload_url}?name=${encoded_filename}" \
-            --fail-with-body
-
       - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LINUX_PACKAGE_DEB_NAME }}
           path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_DEB_NAME }}
 
-      - name: Upload DEB to Release
-        if: inputs.upload_url != ''
-        run: |
-          filename="${{ env.LINUX_PACKAGE_DEB_NAME }}"
-          filepath="${{ env.LINUX_APP_RELEASE_PATH }}/$filename"
-
-          # URL encode the filename
-          encoded_filename=$(echo -n "$filename" | jq -sRr @uri)
-
-          # Remove the {?name,label} template from upload URL if present
-          upload_url=$(echo "${{ inputs.upload_url }}" | sed 's/{[^}]*}//g')
-
-          echo "Uploading $filename to release..."
-
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$filepath" \
-            "${upload_url}?name=${encoded_filename}" \
-            --fail-with-body
-
-  # Gate for AppFlowy issue #8763. Ubuntu 24.04 ships GLib 2.80 — the release
-  # where g_once_init_leave_pointer was added — so it reproduces the original
-  # crash: a bundled older GLib shadows the host's, and the host GStreamer
-  # plugins audioplayers_linux loads at startup fail to resolve that symbol.
-  # This job launches the produced AppImage headlessly and fails if any
-  # dynamic-linking symbol error is printed. Without the GLib-exclude fix in the
-  # build job this job goes red; with it, green.
-  appimage-smoke-test:
+  # Start the final archives in a clean, newer userspace with host Mesa/GTK
+  # and no mpv/FFmpeg packages. Pixel and process checks reject blank windows,
+  # missing loaders, and the EGL abort previously accepted by the smoke jobs.
+  archive-smoke-test:
     needs: build
     runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [tarball, appimage]
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_VERSION: ${{ inputs.build_name }}
+      PACKAGE_FORMAT: ${{ matrix.format }}
     steps:
-      - name: Install runtime dependencies
+      - name: Install desktop runtime and test tools
         run: |
-          sudo apt-get update
-          # GTK + the host GStreamer stack audioplayers_linux pulls in at startup
-          # (this is what loads libgstapp-1.0.so.0). xvfb gives a headless display
-          # so the GUI can actually start.
-          sudo apt-get install -y --no-install-recommends \
-            xvfb libgtk-3-0 \
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates python3 python3-gi gir1.2-gtk-3.0 binutils \
+            xvfb xauth xdotool libgtk-3-0 libegl1 libegl-mesa0 libgl1-mesa-dri \
+            libgles2 libkeybinder-3.0-0 libnotify4 \
             libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            libxv1 libxss1 libxcb-shape0 libxcb-xfixes0 \
-            libvdpau1 libva2 libva-drm2 libva-x11-2 \
-            libgles2 libgl1-mesa-dri
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
-      - name: Download AppImage artifact
+      - name: Download packaging test tools
         uses: actions/download-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}-linux-x86_64.AppImage
-          path: appimage
+          name: linux-packaging-test-tools
+          path: tools
 
-      - name: Smoke-test AppImage launch
-        run: |
-          set -uo pipefail
-          APPIMAGE="$(ls appimage/AppFlowy-*-x86_64.AppImage 2>/dev/null | head -n1 || true)"
-          if [ -z "$APPIMAGE" ]; then
-            echo "::error::No AppImage found in the downloaded artifact"
-            exit 1
-          fi
-          echo "Testing: $APPIMAGE"
-          ls -la "$APPIMAGE"
-
-          # The build job's AppImage step is continue-on-error and falls back to
-          # an empty placeholder file. Reject that so a failed build can no longer
-          # slip through green.
-          size=$(stat -c%s "$APPIMAGE")
-          if [ "$size" -lt 1000000 ]; then
-            echo "::error::AppImage is only ${size} bytes — the build likely failed and produced a placeholder"
-            exit 1
-          fi
-
-          chmod +x "$APPIMAGE"
-          # FUSE isn't available on the runner; extract-and-run instead.
-          export APPIMAGE_EXTRACT_AND_RUN=1
-
-          # A GUI app won't exit on its own, so timeout killing it means it stayed
-          # up = good. Pass/fail is keyed only on whether a dynamic-linking symbol
-          # error was printed, so unrelated headless-CI quirks don't fail the job.
-          set +e
-          timeout 40s xvfb-run -a "$APPIMAGE" > smoke.log 2>&1
-          status=$?
-          set -e
-          echo "----- app output -----"
-          cat smoke.log || true
-          echo "----- exit status: $status -----"
-
-          if grep -Eiq "symbol lookup error|undefined symbol" smoke.log; then
-            echo "::error::AppImage failed with a dynamic-linking symbol error — issue #8763 regression"
-            exit 1
-          fi
-          echo "✅ AppImage launched without symbol lookup errors"
-
-  # Gate for the "libmpv.so.1: cannot open shared object file" crash. Runs on
-  # ubuntu-24.04, which has NO libmpv1 package and a newer GLib (2.80) — i.e. a
-  # host where a non-self-contained tarball would fail. We deliberately do NOT
-  # install libmpv, then launch the extracted tarball headlessly and fail on any
-  # libmpv/symbol error. Without the bundling step this job goes red; with it,
-  # green.
-  tarball-smoke-test:
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Install runtime dependencies (no libmpv — prove self-containment)
-        run: |
-          sudo apt-get update
-          # GTK + GL + the host GStreamer stack audioplayers_linux loads at
-          # startup, plus the two GTK-ecosystem libs AppFlowy hard-NEEDs at
-          # launch (libkeybinder for global hotkeys, libnotify for tray/
-          # notifications). These are host-provided, exactly like libgtk-3-0:
-          # the .deb declares them in Depends and the AppImage lists them under
-          # include, so they're never bundled. Omitting them here aborts the
-          # loader on libkeybinder-3.0.so.0 before the libmpv gate is reached.
-          # libmpv is the ONLY lib intentionally omitted: the tarball must
-          # supply it.
-          # The X11/video-extension libs below are hard-NEEDED by the bundled
-          # ffmpeg/mpv stack (libavdevice -> Xv, libav* -> vdpau/va, mpv -> Xss)
-          # even though AppFlowy never uses those output/decode paths (it renders
-          # video through media_kit's render API). They are host-provided on every
-          # real desktop and in the Flathub freedesktop runtime, so is_host_lib
-          # correctly leaves them unbundled; this minimal CI host just has to
-          # supply them like it already supplies libgtk-3-0 / libgl1 / libegl1.
-          sudo apt-get install -y --no-install-recommends \
-            xvfb libgtk-3-0 libgl1 libegl1 \
-            libkeybinder-3.0-0 libnotify4 \
-            libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-            libxv1 libxss1 libxcb-shape0 libxcb-xfixes0 \
-            libvdpau1 libva2 libva-drm2 libva-x11-2 \
-            libgles2 libgl1-mesa-dri
-
-      - name: Download tarball artifact
+      - name: Download tarball
+        if: matrix.format == 'tarball'
         uses: actions/download-artifact@v4
         with:
           name: AppFlowy-${{ inputs.build_name }}-linux.tar.gz
-          path: tarball
+          path: artifact
 
-      - name: Smoke-test tarball launch
-        shell: bash
+      - name: Download AppImage
+        if: matrix.format == 'appimage'
+        uses: actions/download-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-linux-x86_64.AppImage
+          path: artifact
+
+      - name: Audit and launch the final archive
         run: |
-          set -uo pipefail
-          TGZ="$(ls tarball/AppFlowy-*-linux.tar.gz 2>/dev/null | head -n1 || true)"
-          if [ -z "$TGZ" ]; then
-            echo "::error::No tarball found in the downloaded artifact"; exit 1
+          set -euo pipefail
+          mkdir evidence unpacked
+          if [ "$PACKAGE_FORMAT" = tarball ]; then
+            tar -xzf "artifact/AppFlowy-$BUILD_VERSION-linux.tar.gz" -C unpacked
+            python3 tools/linux_package.py audit unpacked/AppFlowy
+            executable="$PWD/unpacked/AppFlowy/AppFlowy"
+          else
+            executable="$PWD/artifact/AppFlowy-$BUILD_VERSION-x86_64.AppImage"
+            test -s "$executable"
+            chmod +x "$executable"
+            (cd unpacked && "$executable" --appimage-extract > ../evidence/extract.log)
+            python3 tools/linux_package.py audit unpacked/squashfs-root
+            export APPIMAGE_EXTRACT_AND_RUN=1
           fi
-          echo "Testing: $TGZ"
-          tar -xzf "$TGZ"
-
-          test -x AppFlowy/AppFlowy        || { echo "::error::AppFlowy binary missing"; exit 1; }
-          test -e AppFlowy/lib/libmpv.so.1 || { echo "::error::libmpv.so.1 was not bundled into the tarball"; exit 1; }
-
-          # Deterministic, install-free gate: every library in the libmpv/plugin
-          # dependency tree must be either resolvable from the bundle dir or a
-          # genuinely-always-present host lib (GPU driver / display / GLib /
-          # audio server client / core toolchain). Anything else (e.g.
-          # libjack.so.0, libsndio.so.1, libva.so.2) missing from lib/ is a
-          # bundling bug that would crash on hosts/flatpak runtimes lacking it.
-          # This catches the failure class the runtime launch below can miss.
-          is_host_lib() {
-            case "$1" in
-              # Keep this allowlist in sync with the bundling step's is_host_lib
-              # (the "Archive Asset" step above): anything the bundler treats as
-              # host-provided must be accepted here too, or this gate flags libs
-              # that were intentionally left unbundled (kerberos/gssapi, lz4,
-              # libunwind — all ubiquitous low-level system libs).
-              ld-linux*|libc.so*|libm.so*|libdl.so*|libpthread*|librt.so*|libresolv*|libutil*|libnsl*|libanl*) return 0;;
-              libstdc++.so*|libgcc_s.so*|libunwind*) return 0;;
-              libGL*|libEGL*|libGLX*|libGLdispatch*|libOpenGL*|libGLES*|libgbm*|libdrm*|libglapi*|libvdpau*|libvulkan*) return 0;;
-              libX*|libxcb*|libxshmfence*|libxkbcommon*|libwayland-*) return 0;;
-              libglib-2.0*|libgobject-2.0*|libgio-2.0*|libgmodule-2.0*|libgthread-2.0*|libgst*) return 0;;
-              libgtk-*|libgdk-*|libgdk_pixbuf-*|libpango*|libcairo*|libatk*|libatspi*|libgailutil*|libepoxy*) return 0;;
-              libfontconfig*|libfreetype*|libharfbuzz*|libfribidi*|libpixman-1*|libthai*|libdatrie*|libgraphite2*) return 0;;
-              libpulse*|libasound*|libpipewire-*) return 0;;
-              libdbus-1*|libsystemd*|libudev*|libelf*) return 0;;
-              libz.so*|libbz2*|liblzma*|libzstd*|libbrotli*|libexpat*|libffi*|libpcre*|libuuid*|libblkid*|libmount*|libselinux*|libcap*|liblz4*|libgcrypt*|libgpg-error*|libcom_err*|libkeyutils*) return 0;;
-              libgmp*|libnettle*|libhogweed*|libtasn1*|libp11-kit*|libidn2*|libunistring*|libgnutls*|libssl*|libcrypto*|libkrb5*|libk5crypto*|libgssapi*) return 0;;
-              *) return 1;;
-            esac
-          }
-          declare -A seen=()
-          fail=0
-          scan_needed() {
-            local so="$1"
-            local parent="${2:-root}"
-            [ -n "$so" ] || return 0
-            is_host_lib "$so" && return 0
-            if [ ! -e "AppFlowy/lib/$so" ]; then
-              echo "::error::AppFlowy/lib/$parent NEEDs '$so' but it is neither bundled nor a host lib"
-              fail=1
-              return 0
-            fi
-            [ -z "${seen[$so]:-}" ] || return 0
-            seen[$so]=1
-
-            local needed=()
-            local n
-            while read -r n; do
-              [ -n "$n" ] && needed+=("$n")
-            done < <(readelf -d "AppFlowy/lib/$so" | sed -n 's/.*NEEDED.*\[\(.*\)\].*/\1/p')
-
-            local needs_origin=0
-            for n in "${needed[@]}"; do
-              if ! is_host_lib "$n"; then
-                needs_origin=1
-                break
-              fi
-            done
-            if [ "$needs_origin" -eq 1 ] && ! readelf -d "AppFlowy/lib/$so" | grep -Eq '(RPATH|RUNPATH).*\$ORIGIN'; then
-              echo "::error::AppFlowy/lib/$so has bundled non-host deps but no \$ORIGIN RPATH/RUNPATH"
-              fail=1
-            fi
-
-            for n in "${needed[@]}"; do
-              scan_needed "$n" "$so"
-            done
-          }
-          found_mpv=0
-          for mpv in AppFlowy/lib/libmpv.so.*; do
-            [ -e "$mpv" ] || continue
-            found_mpv=1
-            scan_needed "$(basename "$mpv")"
-          done
-          [ "$found_mpv" -eq 1 ] || { echo "::error::no libmpv shared library was bundled into the tarball"; exit 1; }
-          scan_needed libmedia_kit_video_plugin.so
-          [ "$fail" -eq 0 ] || { echo "::error::tarball is not self-contained — see missing libs above"; exit 1; }
-          echo "✅ static check: libmpv closure is self-contained"
-
-          # A GUI app won't exit on its own; timeout killing it = it stayed up.
-          # Pass/fail keys only on dynamic-linking errors so unrelated headless
-          # quirks don't fail the job. The grep now catches ANY missing shared
-          # object, not just libmpv.so.1.
-          set +e
-          timeout 40s xvfb-run -a ./AppFlowy/AppFlowy > smoke.log 2>&1
-          status=$?
-          set -e
-          echo "----- app output -----"
-          cat smoke.log || true
-          echo "----- exit status: $status -----"
-
-          if grep -Eiq "cannot open shared object file|symbol lookup error|undefined symbol" smoke.log; then
-            echo "::error::tarball failed with a dynamic-linking error — bundling regression"
+          # No installed mpv can accidentally hide an incomplete media bundle.
+          if dpkg-query -W -f='${db:Status-Status}' libmpv1 2>/dev/null | grep -q installed; then
+            echo "::error::Runtime image unexpectedly contains libmpv1"
             exit 1
           fi
-          echo "✅ tarball launched without dynamic-linking errors"
+          xvfb-run -a python3 tools/linux_smoke.py \
+            --log evidence/smoke.log "$executable"
+
+      - name: Preserve smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.format }}-smoke-evidence
+          path: evidence/
+          if-no-files-found: warn
+
+  # Exercise the installation path from #9010, rather than only inspecting
+  # Depends or extracting the .deb. Each job begins with standard Ubuntu repos.
+  deb-install-test:
+    needs: build
+    runs-on: ubuntu-24.04
+    container: ubuntu:${{ matrix.ubuntu }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["22.04", "24.04", "26.04"]
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD_VERSION: ${{ inputs.build_name }}
+    steps:
+      - name: Install test tools and a headless Mesa display
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates python3 python3-gi gir1.2-gtk-3.0 binutils \
+            xvfb xauth xdotool libegl1 libegl-mesa0 libgl1-mesa-dri \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - name: Download packaging test tools
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packaging-test-tools
+          path: tools
+
+      - name: Download Debian package
+        uses: actions/download-artifact@v4
+        with:
+          name: AppFlowy-${{ inputs.build_name }}-linux-x86_64.deb
+          path: artifact
+
+      - name: Install and launch the final Debian package
+        run: |
+          set -euo pipefail
+          mkdir evidence
+          apt-get install -y \
+            "$PWD/artifact/AppFlowy-$BUILD_VERSION-linux-x86_64.deb" \
+            2>&1 | tee evidence/install.log
+          test "$(dpkg-query -W -f='${db:Status-Status}' appflowy)" = installed
+          python3 tools/linux_package.py audit /usr/lib/AppFlowy
+          xvfb-run -a python3 tools/linux_smoke.py \
+            --log evidence/smoke.log /usr/bin/AppFlowy
+
+      - name: Preserve install and smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb-ubuntu-${{ matrix.ubuntu }}-evidence
+          path: evidence/
+          if-no-files-found: warn
+
+  publish-linux:
+    needs: [build, archive-smoke-test, deb-install-test]
+    if: inputs.upload_url != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      BUILD_VERSION: ${{ inputs.build_name }}
+      RELEASE_UPLOAD_URL: ${{ inputs.upload_url }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Download validated packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: AppFlowy-${{ inputs.build_name }}-linux*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload validated Linux packages to release
+        run: |
+          set -euo pipefail
+          upload_url="${RELEASE_UPLOAD_URL%%\{*}"
+          for suffix in linux.tar.gz linux-x86_64.deb linux-x86_64.rpm linux-x86_64.AppImage; do
+            filename="AppFlowy-$BUILD_VERSION-$suffix"
+            filepath="artifacts/$filename"
+            # Preserve the public AppImage name while accepting its build name.
+            if [[ "$suffix" = linux-x86_64.AppImage ]]; then
+              filepath="artifacts/AppFlowy-$BUILD_VERSION-x86_64.AppImage"
+            fi
+            test -s "$filepath"
+            encoded_filename=$(jq -nr --arg filename "$filename" '$filename | @uri')
+            curl --fail-with-body --location \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$filepath" \
+              "$upload_url?name=$encoded_filename"
+          done
