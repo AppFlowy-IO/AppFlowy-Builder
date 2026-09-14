@@ -1,5 +1,8 @@
 name: Diagnose Linux runner capacity
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/linux-arm64-runner-diagnostics]
 jobs:
   capacity:
     strategy:
