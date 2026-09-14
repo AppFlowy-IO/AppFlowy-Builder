@@ -233,7 +233,9 @@ jobs:
       - name: Build Linux package (.rpm)
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: |
-          sudo alien -r "$LINUX_PACKAGE_DEB_NAME"
+          # Ubuntu 22.04 alien otherwise retains Debian's arm64 spelling,
+          # which RPM does not recognize as the native aarch64 architecture.
+          sudo alien -r --target="$APPFLOWY_LINUX_ARCH" "$LINUX_PACKAGE_DEB_NAME"
           cp "$LINUX_PACKAGE_TMP_RPM_NAME" "$LINUX_PACKAGE_RPM_NAME"
           test "$(rpm -qp --qf '%{ARCH}' "$LINUX_PACKAGE_RPM_NAME")" = "$APPFLOWY_LINUX_ARCH"
 
