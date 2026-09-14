@@ -40,11 +40,6 @@ def main():
         target = frontend / "appflowy_flutter/linux" / policy.name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(policy, target)
-    # The product ships x86_64. Keep the fixture executable's real architecture
-    # when running this same packaging path on an ARM64 development host.
-    arch = subprocess.check_output(["dpkg", "--print-architecture"], text=True).strip()
-    control = frontend / "scripts/linux_distribution/deb/DEBIAN/control"
-    control.write_text(control.read_text().replace("Architecture: amd64", f"Architecture: {arch}"))
     workflow = yaml.safe_load((builder / ".github/workflows/linux.yaml").read_text())
     step = next(
         step for step in workflow["jobs"]["build"]["steps"]
@@ -59,6 +54,16 @@ def main():
          str(release), version, filename],
         cwd=frontend, check=True,
     )
+    architecture = subprocess.check_output(
+        ["dpkg", "--print-architecture"], text=True,
+    ).strip()
+    packaged_architecture = subprocess.check_output(
+        ["dpkg-deb", "-f", str(release / filename), "Architecture"], text=True,
+    ).strip()
+    if packaged_architecture != architecture:
+        raise AssertionError(
+            f"Debian metadata has {packaged_architecture}, expected {architecture}"
+        )
     shutil.copyfile(release / filename, output / filename)
     print(output / filename)
 
