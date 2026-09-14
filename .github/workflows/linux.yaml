@@ -204,6 +204,13 @@ jobs:
           dart scripts/flutter_release_build/build_flowy.dart exclude-directives . "$BUILD_VERSION"
           # build_flowy.dart run always chooses x86_64 on Linux. Both native
           # production profiles already exist in the frontend Makefile.
+          if [ "$DEB_ARCH" = arm64 ]; then
+            # Fat LTO consumes almost all RAM and swap on the standard ARM
+            # runner during the final FFI compile. Keep optimization level 3,
+            # while partitioning the code and using ThinLTO to reduce memory.
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+          fi
           cargo make --env "APP_VERSION=$BUILD_VERSION" --profile "$BUILD_PROFILE" appflowy
 
       - name: Validate Linux bundle

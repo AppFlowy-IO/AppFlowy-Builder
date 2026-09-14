@@ -71,6 +71,9 @@ bootstraps Flutter from the same upstream release tag. It also installs the
 pinned cargo-make version from source because the download action only supplies
 x86_64 executables on Linux.
 
+ARM64 Rust release builds use ThinLTO and 16 code generation units to reduce
+peak compiler memory on the standard runner. Optimization level 3 is retained.
+
 Release upload waits for both builds, native Debian installation on Ubuntu
 22.04/24.04/26.04 for each architecture, and native tarball/AppImage startup
 on Ubuntu 24.04. RPM conversion and architecture metadata are checked; RPM
