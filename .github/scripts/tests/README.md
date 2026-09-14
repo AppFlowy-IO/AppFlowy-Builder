@@ -1,9 +1,10 @@
 # Linux packaging regression checks
 
-The Linux workflow builds on Ubuntu 22.04 and validates the **final packages**
-before uploading release assets. Debian installation runs in clean Ubuntu
-22.04, 24.04 and 26.04 containers. Tarball and AppImage startup run on Ubuntu
-24.04 without an installed mpv. All launch checks require a visible, nonblank
+The Linux workflow builds x86_64 and ARM64 on native Ubuntu 22.04 runners and
+validates the **final packages** before uploading release assets. Debian
+installation runs in clean Ubuntu 22.04, 24.04 and 26.04 containers on matching
+native runners. Tarball and AppImage startup run on Ubuntu 24.04 for both
+architectures without an installed mpv. All launch checks require a visible, nonblank
 AppFlowy window that stays alive; their logs and PNG screenshots are retained.
 
 Use the matching frontend change that emits `host-libraries.regex` in
@@ -18,6 +19,13 @@ package, records bundled SONAMEs as owned by AppFlowy, and lets
 libraries use local shlibs metadata; unversioned Flutter plugins use private
 symbols metadata. Missing dependency information is an error. Dependencies
 loaded by name at runtime (desktop integration and GStreamer) remain explicit.
+
+ELF headers determine the package architecture. The audit rejects mixed CPU
+architectures and can require a specific target with `--architecture amd64`
+or `--architecture arm64`. Dependency calculation requires a matching native
+Debian host and updates both `Architecture` and `Depends` in the control file.
+The fixture checks the resulting `.deb` architecture without modifying the
+frontend's default `amd64` control template beforehand.
 
 ## Reproduce the native dependency and EGL regressions
 
@@ -50,9 +58,10 @@ initialize EGL with the bundled mpv. The old dependency step instead requires
 Ubuntu 22.04 codec packages such as libavcodec58/libmpv1. The old CMake rules
 bundle libstdc++, which can prevent the newer host Mesa/LLVM from loading.
 
-The fixture uses the machine's native Debian architecture. An ARM64 run tests
-the dependency/loader contract; it does not substitute for the workflow's
-x86_64 application tests or an Arch/AMD Wayland desktop check.
+Run the fixture on each native architecture. The bundle audit checks also
+reject an incorrect target architecture and a private ELF with a foreign
+machine header. The full workflow runs these negative controls against each
+built application bundle before packaging.
 
 ## Exercise the smoke gate itself
 

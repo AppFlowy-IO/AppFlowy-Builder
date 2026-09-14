@@ -16,21 +16,31 @@ import tempfile
 class Elf:
     path: Path
     soname: str | None
+    architecture: str
     needed: tuple[str, ...]
 
 
 @lru_cache(maxsize=None)
 def read_elf(path: Path) -> Elf | None:
     with path.open("rb") as stream:
-        if stream.read(4) != b"\x7fELF":
-            return None
+        header = stream.read(20)
+    if header[:4] != b"\x7fELF":
+        return None
+    # Both Linux targets use little-endian, 64-bit ELF. Check the payload so
+    # architecture labels cannot hide a foreign executable or private library.
+    if len(header) < 20 or header[4:6] != b"\x02\x01":
+        raise ValueError(f"Unsupported ELF class or byte order: {path}")
+    machine = int.from_bytes(header[18:20], "little")
+    architecture = {62: "amd64", 183: "arm64"}.get(machine)
+    if architecture is None:
+        raise ValueError(f"Unsupported ELF machine {machine}: {path}")
     dynamic = subprocess.check_output(["readelf", "--wide", "-d", str(path)], text=True)
     soname = re.search(r"\(SONAME\).*\[([^]]+)\]", dynamic)
-    return Elf(path, soname[1] if soname else None,
+    return Elf(path, soname[1] if soname else None, architecture,
                tuple(re.findall(r"\(NEEDED\).*\[([^]]+)\]", dynamic)))
 
 
-def inspect_bundle(bundle: Path) -> list[Elf]:
+def inspect_bundle(bundle: Path, architecture: str | None = None) -> list[Elf]:
     """Check the complete staged payload, including SONAME aliases."""
     bundle = bundle.resolve()
     policy = bundle / "host-libraries.regex"
@@ -55,9 +65,16 @@ def inspect_bundle(bundle: Path) -> list[Elf]:
         if elf:
             files[elf.path] = elf
             names.add(path.name)
-    if not read_elf(bundle / "AppFlowy"):
+    executable = read_elf(bundle / "AppFlowy")
+    if not executable:
         raise ValueError(f"Missing native AppFlowy executable: {bundle}")
+    architecture = architecture or executable.architecture
     for elf in files.values():
+        if elf.architecture != architecture:
+            raise ValueError(
+                f"ELF architecture mismatch: expected {architecture}, "
+                f"found {elf.architecture}: {elf.path}"
+            )
         if elf.soname and elf.soname not in names:
             raise ValueError(f"Missing SONAME alias {elf.soname} for {elf.path}")
         for needed in elf.needed:
@@ -77,7 +94,11 @@ def copy_library(source, destination):
 
 
 def debian_dependencies(bundle: Path) -> str:
-    inspect_bundle(bundle)
+    # dpkg-shlibdeps must resolve dependencies against a matching native host.
+    architecture = subprocess.check_output(
+        ["dpkg", "--print-architecture"], text=True,
+    ).strip()
+    inspect_bundle(bundle, architecture)
     with tempfile.TemporaryDirectory(prefix="appflowy-shlibs-") as directory:
         work = Path(directory)
         package = work / "debian/appflowy"
@@ -134,22 +155,27 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
     audit = subparsers.add_parser("audit")
     audit.add_argument("bundle", type=Path)
+    audit.add_argument("--architecture", choices=("amd64", "arm64"))
     deps = subparsers.add_parser("depends")
     deps.add_argument("bundle", type=Path)
     deps.add_argument("--control", required=True, type=Path)
     args = parser.parse_args()
     if args.command == "audit":
-        elves = inspect_bundle(args.bundle)
+        elves = inspect_bundle(args.bundle, args.architecture)
         print(f"Validated {len(elves)} ELF files: {args.bundle}")
     else:
         dependencies = debian_dependencies(args.bundle.resolve())
-        text, count = re.subn(
-            r"(?m)^Depends:.*$", lambda _: "Depends: " + dependencies,
-            args.control.read_text(),
-        )
-        if count != 1:
-            raise ValueError(f"Expected exactly one Depends field in {args.control}")
-        args.control.write_text(text)
+        architecture = read_elf(args.bundle.resolve() / "AppFlowy").architecture
+        control = args.control.read_text()
+        # Stage both edits before writing so malformed metadata is unchanged.
+        for field, value in (("Architecture", architecture), ("Depends", dependencies)):
+            control, count = re.subn(
+                rf"(?m)^{field}:.*$", lambda _: f"{field}: {value}", control,
+            )
+            if count != 1:
+                raise ValueError(f"Expected exactly one {field} field in {args.control}")
+        args.control.write_text(control)
+        print("Architecture: " + architecture)
         print("Depends: " + dependencies)
 
 

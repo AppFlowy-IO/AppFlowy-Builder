@@ -54,21 +54,35 @@ env:
 jobs:
   build:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        os: [ubuntu-22.04]
         include:
           - os: ubuntu-22.04
+            arch: x86_64
+            deb_arch: amd64
             target: x86_64-unknown-linux-gnu
+            profile: production-linux-x86_64
+            appimage_arch: x86_64
+            tarball_suffix: linux.tar.gz
+          - os: ubuntu-22.04-arm
+            arch: arm64
+            deb_arch: arm64
+            target: aarch64-unknown-linux-gnu
+            profile: production-linux-aarch64
+            appimage_arch: aarch64
+            tarball_suffix: linux-arm64.tar.gz
     runs-on: ${{ matrix.os }}
     env:
       BUILD_VERSION: ${{ inputs.build_name }}
+      BUILD_PROFILE: ${{ matrix.profile }}
+      DEB_ARCH: ${{ matrix.deb_arch }}
+      APPFLOWY_LINUX_ARCH: ${{ matrix.appimage_arch }}
       LINUX_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/linux/Release
-      LINUX_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-linux.tar.gz
-      LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.deb
-      LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.rpm
-      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ inputs.build_name }}-2.x86_64.rpm
-      LINUX_PACKAGE_APPIMAGE_NAME: AppFlowy-${{ inputs.build_name }}-linux-x86_64.AppImage
+      LINUX_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-${{ matrix.tarball_suffix }}
+      LINUX_PACKAGE_DEB_NAME: AppFlowy-${{ inputs.build_name }}-linux-${{ matrix.arch }}.deb
+      LINUX_PACKAGE_RPM_NAME: AppFlowy-${{ inputs.build_name }}-linux-${{ matrix.arch }}.rpm
+      LINUX_PACKAGE_TMP_RPM_NAME: AppFlowy-${{ inputs.build_name }}-2.${{ matrix.appimage_arch }}.rpm
+      LINUX_PACKAGE_APPIMAGE_NAME: AppFlowy-${{ inputs.build_name }}-linux-${{ matrix.arch }}.AppImage
 
     steps:
       # the following step is required to avoid running out of space
@@ -80,7 +94,7 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
@@ -95,20 +109,34 @@ jobs:
 
       - name: Install Rust toolchain
         id: rust_toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.target }}
-          override: true
-          profile: minimal
+          targets: ${{ matrix.target }}
+
+      - name: Select Rust toolchain for build tools
+        run: rustup override set "$RUST_TOOLCHAIN"
 
       - name: Install flutter
+        if: matrix.arch == 'x86_64'
         id: flutter
         uses: subosito/flutter-action@v2
         with:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+
+      # The pinned Flutter release has no Linux ARM64 SDK archive. Bootstrap
+      # its native Dart SDK and Linux engine from the same upstream release tag.
+      - name: Install Flutter (ARM64)
+        if: matrix.arch == 'arm64'
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" \
+            https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          echo "FLUTTER_ROOT=$RUNNER_TEMP/flutter" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/flutter/bin/flutter" --version
+          "$RUNNER_TEMP/flutter/bin/flutter" precache --linux
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -117,6 +145,7 @@ jobs:
             frontend/rust-lib
 
       - uses: davidB/rust-cargo-make@v1
+        if: matrix.arch == 'x86_64'
         with:
           version: "0.37.18"
 
@@ -127,10 +156,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --fix-broken
           sudo apt-get install -y build-essential libsqlite3-dev libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev libcurl4-openssl-dev libepoxy-dev
-          sudo apt-get install keybinder-3.0 libnotify-dev libwayland-cursor0 libwayland-client0 libwayland-egl1 unzip
+          sudo apt-get install -y keybinder-3.0 libnotify-dev libwayland-cursor0 libwayland-client0 libwayland-egl1 unzip
           sudo apt-get -y install alien
-          sudo apt install libmpv-dev mpv
-          sudo apt install libasound2-dev
+          sudo apt-get install -y libmpv-dev mpv
+          sudo apt-get install -y libasound2-dev
           # Install GStreamer for audioplayers_linux
           # Install libunwind-dev first to resolve dependency issues
           sudo apt-get -y install libunwind-dev
@@ -139,15 +168,20 @@ jobs:
           sudo apt-get install -y fuse libfuse2
           # Dependency calculation and direct AppImage packaging tools.
           sudo apt-get install -y dpkg-dev patchelf file desktop-file-utils libgtk-3-bin squashfs-tools zsync gnupg fakeroot strace
-          source $HOME/.cargo/env
+          source "$HOME/.cargo/env"
           cargo install duckscript_cli --force --locked
           rustup target add ${{ matrix.target }}
         shell: bash
 
+      # The download action above always installs an x86_64 Linux executable.
+      - name: Install cargo-make (ARM64)
+        if: matrix.arch == 'arm64'
+        run: cargo install cargo-make --version 0.37.18 --locked
+
       - name: Generate env file
         working-directory: frontend/appflowy_flutter
         run: |
-          echo "INTERNAL_BUILD=${{ github.env.inputs.internal_build }}" >> .env
+          echo "INTERNAL_BUILD=${{ inputs.internal_build }}" >> .env
         shell: bash
 
       - name: Configure Git credentials for Cargo
@@ -158,23 +192,30 @@ jobs:
       - name: Build AppFlowy
         working-directory: frontend
         run: |
+          set -euo pipefail
           flutter config --enable-linux-desktop
           cd appflowy_flutter
           flutter pub get
+          trap 'cd "$GITHUB_WORKSPACE/frontend" && dart scripts/flutter_release_build/build_flowy.dart include-directives . "$BUILD_VERSION" && cd appflowy_flutter && dart run pdfrx:remove_wasm_modules --revert' EXIT
           dart run pdfrx:remove_wasm_modules
-          trap 'cd "$GITHUB_WORKSPACE/frontend/appflowy_flutter" && dart run pdfrx:remove_wasm_modules --revert' EXIT
           cd ..
-          dart ./scripts/flutter_release_build/build_flowy.dart run . ${{ inputs.build_name }}
+          dart scripts/flutter_release_build/build_flowy.dart exclude-directives . "$BUILD_VERSION"
+          # build_flowy.dart run always chooses x86_64 on Linux. Both native
+          # production profiles already exist in the frontend Makefile.
+          cargo make --env "APP_VERSION=$BUILD_VERSION" --profile "$BUILD_PROFILE" appflowy
 
       - name: Validate Linux bundle
         working-directory: frontend
         run: |
           python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/linux_package.py" audit \
-            "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy"
+            "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy" \
+            --architecture "$DEB_ARCH"
+          python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/tests/test_linux_package.py" \
+            --bundle "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy"
 
       - name: Archive Asset
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
-        run: tar -czf "${{ env.LINUX_ZIP_NAME }}" AppFlowy
+        run: tar -czf "$LINUX_ZIP_NAME" AppFlowy
 
       - name: Compute .deb runtime dependencies
         working-directory: frontend
@@ -186,13 +227,15 @@ jobs:
       - name: Build Linux package (.deb)
         working-directory: frontend
         run: |
-          sh scripts/linux_distribution/deb/build_deb.sh appflowy_flutter/product/${{ inputs.build_name }}/linux/Release ${{ inputs.build_name }} ${{ env.LINUX_PACKAGE_DEB_NAME }}
+          sh scripts/linux_distribution/deb/build_deb.sh "appflowy_flutter/product/$BUILD_VERSION/linux/Release" "$BUILD_VERSION" "$LINUX_PACKAGE_DEB_NAME"
+          test "$(dpkg-deb -f "appflowy_flutter/product/$BUILD_VERSION/linux/Release/$LINUX_PACKAGE_DEB_NAME" Architecture)" = "$DEB_ARCH"
 
       - name: Build Linux package (.rpm)
         working-directory: ${{ env.LINUX_APP_RELEASE_PATH }}
         run: |
-          sudo alien -r ${{ env.LINUX_PACKAGE_DEB_NAME }}
-          cp -r ${{ env.LINUX_PACKAGE_TMP_RPM_NAME }} ${{ env.LINUX_PACKAGE_RPM_NAME }}
+          sudo alien -r "$LINUX_PACKAGE_DEB_NAME"
+          cp "$LINUX_PACKAGE_TMP_RPM_NAME" "$LINUX_PACKAGE_RPM_NAME"
+          test "$(rpm -qp --qf '%{ARCH}' "$LINUX_PACKAGE_RPM_NAME")" = "$APPFLOWY_LINUX_ARCH"
 
       - name: Build Linux package (.AppImage)
         working-directory: frontend
@@ -203,13 +246,15 @@ jobs:
           bash scripts/linux_distribution/appimage/build_appimage.sh \
             "$BUILD_VERSION" \
             "appflowy_flutter/product/$BUILD_VERSION/linux/Release/AppFlowy"
-          python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/linux_package.py" audit AppDir
-          test -s "AppFlowy-$BUILD_VERSION-x86_64.AppImage"
+          python3 "$GITHUB_WORKSPACE/.builder/.github/scripts/linux_package.py" audit AppDir \
+            --architecture "$DEB_ARCH"
+          mv "AppFlowy-$BUILD_VERSION-$APPFLOWY_LINUX_ARCH.AppImage" \
+            "appflowy_flutter/product/$BUILD_VERSION/linux/Release/$LINUX_PACKAGE_APPIMAGE_NAME"
 
       - name: Upload packaging test tools
         uses: actions/upload-artifact@v4
         with:
-          name: linux-packaging-test-tools
+          name: linux-${{ matrix.arch }}-packaging-test-tools
           path: .builder/.github/scripts/linux_*.py
           include-hidden-files: true
           if-no-files-found: error
@@ -224,7 +269,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.LINUX_PACKAGE_APPIMAGE_NAME}}
-          path: frontend/AppFlowy-${{ inputs.build_name }}-x86_64.AppImage
+          path: ${{ env.LINUX_APP_RELEASE_PATH }}/${{ env.LINUX_PACKAGE_APPIMAGE_NAME }}
 
       - name: Upload RPM
         uses: actions/upload-artifact@v4
@@ -243,18 +288,31 @@ jobs:
   # missing loaders, and the EGL abort previously accepted by the smoke jobs.
   archive-smoke-test:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     container: ubuntu:24.04
     strategy:
       fail-fast: false
       matrix:
+        arch: [x86_64, arm64]
         format: [tarball, appimage]
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+            deb_arch: amd64
+            tarball_suffix: linux.tar.gz
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            deb_arch: arm64
+            tarball_suffix: linux-arm64.tar.gz
     defaults:
       run:
         shell: bash
     env:
       BUILD_VERSION: ${{ inputs.build_name }}
       PACKAGE_FORMAT: ${{ matrix.format }}
+      DEB_ARCH: ${{ matrix.deb_arch }}
+      TARBALL_NAME: AppFlowy-${{ inputs.build_name }}-${{ matrix.tarball_suffix }}
+      APPIMAGE_NAME: AppFlowy-${{ inputs.build_name }}-linux-${{ matrix.arch }}.AppImage
     steps:
       - name: Install desktop runtime and test tools
         run: |
@@ -269,21 +327,21 @@ jobs:
       - name: Download packaging test tools
         uses: actions/download-artifact@v4
         with:
-          name: linux-packaging-test-tools
+          name: linux-${{ matrix.arch }}-packaging-test-tools
           path: tools
 
       - name: Download tarball
         if: matrix.format == 'tarball'
         uses: actions/download-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}-linux.tar.gz
+          name: ${{ env.TARBALL_NAME }}
           path: artifact
 
       - name: Download AppImage
         if: matrix.format == 'appimage'
         uses: actions/download-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}-linux-x86_64.AppImage
+          name: ${{ env.APPIMAGE_NAME }}
           path: artifact
 
       - name: Audit and launch the final archive
@@ -291,15 +349,15 @@ jobs:
           set -euo pipefail
           mkdir evidence unpacked
           if [ "$PACKAGE_FORMAT" = tarball ]; then
-            tar -xzf "artifact/AppFlowy-$BUILD_VERSION-linux.tar.gz" -C unpacked
-            python3 tools/linux_package.py audit unpacked/AppFlowy
+            tar -xzf "artifact/$TARBALL_NAME" -C unpacked
+            python3 tools/linux_package.py audit unpacked/AppFlowy --architecture "$DEB_ARCH"
             executable="$PWD/unpacked/AppFlowy/AppFlowy"
           else
-            executable="$PWD/artifact/AppFlowy-$BUILD_VERSION-x86_64.AppImage"
+            executable="$PWD/artifact/$APPIMAGE_NAME"
             test -s "$executable"
             chmod +x "$executable"
             (cd unpacked && "$executable" --appimage-extract > ../evidence/extract.log)
-            python3 tools/linux_package.py audit unpacked/squashfs-root
+            python3 tools/linux_package.py audit unpacked/squashfs-root --architecture "$DEB_ARCH"
             export APPIMAGE_EXTRACT_AND_RUN=1
           fi
           # No installed mpv can accidentally hide an incomplete media bundle.
@@ -314,7 +372,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.format }}-smoke-evidence
+          name: linux-${{ matrix.arch }}-${{ matrix.format }}-smoke-evidence
           path: evidence/
           if-no-files-found: warn
 
@@ -322,17 +380,27 @@ jobs:
   # Depends or extracting the .deb. Each job begins with standard Ubuntu repos.
   deb-install-test:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     container: ubuntu:${{ matrix.ubuntu }}
     strategy:
       fail-fast: false
       matrix:
+        arch: [x86_64, arm64]
         ubuntu: ["22.04", "24.04", "26.04"]
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+            deb_arch: amd64
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            deb_arch: arm64
     defaults:
       run:
         shell: bash
     env:
       BUILD_VERSION: ${{ inputs.build_name }}
+      DEB_ARCH: ${{ matrix.deb_arch }}
+      DEB_NAME: AppFlowy-${{ inputs.build_name }}-linux-${{ matrix.arch }}.deb
     steps:
       - name: Install test tools and a headless Mesa display
         run: |
@@ -345,24 +413,26 @@ jobs:
       - name: Download packaging test tools
         uses: actions/download-artifact@v4
         with:
-          name: linux-packaging-test-tools
+          name: linux-${{ matrix.arch }}-packaging-test-tools
           path: tools
 
       - name: Download Debian package
         uses: actions/download-artifact@v4
         with:
-          name: AppFlowy-${{ inputs.build_name }}-linux-x86_64.deb
+          name: ${{ env.DEB_NAME }}
           path: artifact
 
       - name: Install and launch the final Debian package
         run: |
           set -euo pipefail
           mkdir evidence
+          test "$(dpkg --print-architecture)" = "$DEB_ARCH"
+          test "$(dpkg-deb -f "artifact/$DEB_NAME" Architecture)" = "$DEB_ARCH"
           apt-get install -y \
-            "$PWD/artifact/AppFlowy-$BUILD_VERSION-linux-x86_64.deb" \
+            "$PWD/artifact/$DEB_NAME" \
             2>&1 | tee evidence/install.log
           test "$(dpkg-query -W -f='${db:Status-Status}' appflowy)" = installed
-          python3 tools/linux_package.py audit /usr/lib/AppFlowy
+          python3 tools/linux_package.py audit /usr/lib/AppFlowy --architecture "$DEB_ARCH"
           xvfb-run -a python3 tools/linux_smoke.py \
             --log evidence/smoke.log /usr/bin/AppFlowy
 
@@ -370,7 +440,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: linux-deb-ubuntu-${{ matrix.ubuntu }}-evidence
+          name: linux-${{ matrix.arch }}-deb-ubuntu-${{ matrix.ubuntu }}-evidence
           path: evidence/
           if-no-files-found: warn
 
@@ -396,13 +466,12 @@ jobs:
         run: |
           set -euo pipefail
           upload_url="${RELEASE_UPLOAD_URL%%\{*}"
-          for suffix in linux.tar.gz linux-x86_64.deb linux-x86_64.rpm linux-x86_64.AppImage; do
+          for suffix in linux.tar.gz linux-arm64.tar.gz \
+            linux-x86_64.deb linux-arm64.deb \
+            linux-x86_64.rpm linux-arm64.rpm \
+            linux-x86_64.AppImage linux-arm64.AppImage; do
             filename="AppFlowy-$BUILD_VERSION-$suffix"
             filepath="artifacts/$filename"
-            # Preserve the public AppImage name while accepting its build name.
-            if [[ "$suffix" = linux-x86_64.AppImage ]]; then
-              filepath="artifacts/AppFlowy-$BUILD_VERSION-x86_64.AppImage"
-            fi
             test -s "$filepath"
             encoded_filename=$(jq -nr --arg filename "$filename" '$filename | @uri')
             curl --fail-with-body --location \
