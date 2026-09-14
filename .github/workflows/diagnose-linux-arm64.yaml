@@ -1,0 +1,27 @@
+name: Diagnose Linux runner capacity
+on: workflow_dispatch
+jobs:
+  capacity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Initial capacity
+        run: |
+          uname -m
+          nproc
+          free -h
+          df -h
+      - name: Apply existing builder cleanup
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+      - name: Available build capacity
+        run: |
+          free -h
+          df -h
+          sudo du -xhd2 /opt /usr/local /usr/share /mnt /home/runner 2>/dev/null | sort -h | tail -45
