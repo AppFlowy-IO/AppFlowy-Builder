@@ -134,6 +134,8 @@ jobs:
           git clone --depth 1 --branch "$FLUTTER_VERSION" \
             https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          # Rust's protobuf generator invokes the globally installed Dart plugin.
+          echo "${PUB_CACHE:-$HOME/.pub-cache}/bin" >> "$GITHUB_PATH"
           echo "FLUTTER_ROOT=$RUNNER_TEMP/flutter" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/flutter/bin/flutter" --version
           "$RUNNER_TEMP/flutter/bin/flutter" precache --linux
