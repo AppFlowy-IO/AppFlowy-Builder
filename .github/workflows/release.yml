@@ -2,9 +2,6 @@ name: Build AppFlowy Application
 run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.12.0' }} - ${{ github.event.inputs.internal_build || '1' }}
 
 on:
-  schedule:
-    # Daily build at 11 AM SGT (03:00 UTC)
-    - cron: '0 3 * * *'  # 11 AM SGT
   workflow_dispatch:
     inputs:
       version:
