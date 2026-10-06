@@ -31,7 +31,7 @@ on:
         description: "Android build type"
         required: false
         type: choice
-        default: "apk"
+        default: "both"
         options:
           - "both"
           - "apk"
