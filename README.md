@@ -29,6 +29,11 @@ For instructions on creating these secrets, see [Flutter's deployment guide for 
 
 ### Requirements for macOS
 
+macOS releases target Apple silicon (ARM64) only and are published as
+`AppFlowy-<version>-macos-arm64.dmg` and `.zip` assets. The workflow uses the
+source repository's existing Rust release profile without overriding its
+compiler settings.
+
 To build for macOS, set the following secrets:
 
 - `MACOS_CERTIFICATE_BASE64`
