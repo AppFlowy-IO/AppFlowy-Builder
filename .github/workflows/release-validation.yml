@@ -1,0 +1,27 @@
+name: Release version validation
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/verify_release_version.py"
+      - ".github/scripts/tests/test_release_version.py"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/verify_release_version.py"
+      - ".github/scripts/tests/test_release_version.py"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test release version validation
+        run: python3 -m unittest discover -s .github/scripts/tests -p test_release_version.py -v
