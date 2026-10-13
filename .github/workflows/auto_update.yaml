@@ -416,6 +416,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
       - name: Get version from workflow input
         id: get_version
