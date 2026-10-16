@@ -69,6 +69,7 @@ jobs:
       version: ${{ steps.parse_inputs.outputs.version }}
       release_tag: ${{ steps.parse_inputs.outputs.release_tag }}
       branch_name: ${{ steps.parse_inputs.outputs.branch_name }}
+      source_sha: ${{ steps.verify_source.outputs.source_sha }}
       build_number: ${{ steps.parse_inputs.outputs.build_number }}
       platforms: ${{ steps.parse_inputs.outputs.platforms }}
       android_build_type: ${{ steps.parse_inputs.outputs.android_build_type }}
@@ -266,6 +267,23 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           fetch-depth: 0
 
+      - name: Checkout Builder validation tools
+        if: steps.parse_inputs.outputs.skip_build != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .builder
+
+      - name: Verify release source version
+        if: steps.parse_inputs.outputs.skip_build != 'true'
+        id: verify_source
+        env:
+          RELEASE_VERSION: ${{ steps.parse_inputs.outputs.version }}
+        run: |
+          python3 .builder/.github/scripts/verify_release_version.py --source . --version "$RELEASE_VERSION"
+          # Build the verified commit even if the source branch moves later.
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Create release notes
         if: steps.parse_inputs.outputs.skip_build != 'true'
         id: create_release_notes
@@ -334,7 +352,7 @@ jobs:
     uses: ./.github/workflows/android.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
-      branch: ${{ needs.prepare.outputs.branch_name }}
+      branch: ${{ needs.prepare.outputs.source_sha }}
       build_name: ${{ needs.prepare.outputs.version }}
       build_number: ${{ needs.prepare.outputs.build_number }}
       build_type: apk
@@ -349,7 +367,7 @@ jobs:
     uses: ./.github/workflows/android.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
-      branch: ${{ needs.prepare.outputs.branch_name }}
+      branch: ${{ needs.prepare.outputs.source_sha }}
       build_name: ${{ needs.prepare.outputs.version }}
       build_number: ${{ needs.prepare.outputs.build_number }}
       build_type: appbundle
@@ -364,7 +382,7 @@ jobs:
     uses: ./.github/workflows/ios.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
-      branch: ${{ needs.prepare.outputs.branch_name }}
+      branch: ${{ needs.prepare.outputs.source_sha }}
       build_name: ${{ needs.prepare.outputs.version }}
       build_number: ${{ needs.prepare.outputs.build_number }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
@@ -378,7 +396,7 @@ jobs:
     uses: ./.github/workflows/macos.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
-      branch: ${{ needs.prepare.outputs.branch_name }}
+      branch: ${{ needs.prepare.outputs.source_sha }}
       build_name: ${{ needs.prepare.outputs.version }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
@@ -391,7 +409,7 @@ jobs:
     uses: ./.github/workflows/windows.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
-      branch: ${{ needs.prepare.outputs.branch_name }}
+      branch: ${{ needs.prepare.outputs.source_sha }}
       build_name: ${{ needs.prepare.outputs.version }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
@@ -404,7 +422,7 @@ jobs:
     uses: ./.github/workflows/linux.yaml
     with:
       repo: AppFlowy-IO/AppFlowy-Premium
-      branch: ${{ needs.prepare.outputs.branch_name }}
+      branch: ${{ needs.prepare.outputs.source_sha }}
       build_name: ${{ needs.prepare.outputs.version }}
       internal_build: ${{ needs.prepare.outputs.internal_build }}
       upload_url: ${{ needs.prepare.outputs.upload_url }}
