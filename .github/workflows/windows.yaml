@@ -78,6 +78,32 @@ jobs:
           ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate desktop update manifest
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.build_name }}
+        run: |
+          set -euo pipefail
+          generator=frontend/scripts/tool/generate_desktop_update_manifest.py
+          if [ ! -f "$generator" ]; then
+            echo "::error::Desktop source does not contain $generator. Build a revision with desktop update manifest support."
+            exit 1
+          fi
+          python "$generator" --version "$RELEASE_VERSION" --output desktop-update.json
+
+      - name: Upload desktop update manifest
+        if: inputs.upload_url == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-update.json
+          path: desktop-update.json
+          if-no-files-found: error
+
       - name: Install flutter
         uses: subosito/flutter-action@v2
         with:
