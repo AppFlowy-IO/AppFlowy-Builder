@@ -1,5 +1,27 @@
 # Linux packaging regression checks
 
+## Desktop update manifest regression checks
+
+The Builder workflows run the generator from the same Desktop source revision
+as the installers. With Python 3.10+ and PyYAML installed, run:
+
+```sh
+python3 .github/scripts/tests/test_desktop_update_metadata.py \
+  --frontend /path/to/AppFlowy-Premium/frontend
+```
+
+Use a Desktop revision containing
+`scripts/tool/generate_desktop_update_manifest.py`. The fixture copies that
+generator and its actual compatibility policy into temporary directories and
+executes all four workflows' actual generation steps. It checks the generated
+version and server minimum, rejects missing source files, unreviewed versions,
+prereleases, and shell input, and verifies source commit pinning, desktop-only
+generation, single-owner artifact uploads, and Linux's existing publishing gates.
+It does not modify the supplied source, change settings, build installers, or
+contact GitHub. Runner-specific packaging and release uploads still require CI.
+
+## Linux packaging
+
 The Linux workflow builds x86_64 and ARM64 on native Ubuntu 22.04 runners and
 validates the **final packages** before uploading release assets. Debian
 installation runs in clean Ubuntu 22.04, 24.04 and 26.04 containers on matching

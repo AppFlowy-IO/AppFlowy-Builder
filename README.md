@@ -87,6 +87,40 @@ architecture-specific artifact names.
 
 See [Linux packaging checks](.github/scripts/tests/README.md) for local checks.
 
+### Desktop update metadata
+
+Every desktop build generates `desktop-update.json` from the checked-out
+Desktop repository's `frontend/scripts/tool/generate_desktop_update_manifest.py`.
+The generator reads the same compatibility table compiled into Desktop; Builder
+does not maintain a separate minimum server version.
+
+The main build workflow resolves the requested Desktop branch to one commit and
+uses that SHA for every platform. It records the SHA in the Builder release
+notes, uploads the JSON as an Actions artifact named `desktop-update.json`, and
+attaches the file to that Builder release. Standalone macOS, Windows, and Linux
+builds also upload the manifest as an Actions artifact. Both standalone Linux
+architectures build from the commit resolved by the metadata preparation job.
+
+Generation runs before desktop compilation and fails if the selected Desktop
+revision lacks the generator or its compatibility policy, the version is not a
+stable `X.Y.Z`, or the version exceeds the policy's reviewed range. Select a
+Desktop revision containing the update feature and review its compatibility
+policy before building a new release. Mobile-only builds skip metadata
+generation.
+
+When promoting Builder packages to the public `AppFlowy-IO/AppFlowy` release,
+copy this generated file unchanged alongside the installers before publishing
+the release. Builder does not publish to that public repository automatically.
+The server discovers the public release's `desktop-update.json` asset and
+exposes its `minimum_server_version` to Desktop and Admin.
+
+To generate the same file locally, run from the Desktop repository root:
+
+```sh
+python3 frontend/scripts/tool/generate_desktop_update_manifest.py \
+  --version 0.14.9 --output desktop-update.json
+```
+
 ## How to use
 
 > [!CAUTION]
