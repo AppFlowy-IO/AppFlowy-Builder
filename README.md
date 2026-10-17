@@ -29,10 +29,14 @@ For instructions on creating these secrets, see [Flutter's deployment guide for 
 
 ### Requirements for macOS
 
-macOS releases target Apple silicon (ARM64) only and are published as
-`AppFlowy-<version>-macos-arm64.dmg` and `.zip` assets. The workflow uses the
-source repository's existing Rust release profile without overriding its
-compiler settings.
+Every macOS build produces universal, Apple silicon (ARM64), and Intel (x86_64)
+packages as `AppFlowy-<version>-macos-<architecture>.dmg` and `.zip` assets,
+where `<architecture>` is `universal`, `arm64`, or `x86_64`. Each package
+contains `AppFlowy.app`. The source repository's universal build script builds
+both Rust targets once, then Builder thins the app for each architecture before
+signing and notarizing all three packages. Rust release compiler settings are
+unchanged. Auto-update generates separate ARM64 and x86_64 appcasts pointing to
+their matching DMGs.
 
 To build for macOS, set the following secrets:
 
