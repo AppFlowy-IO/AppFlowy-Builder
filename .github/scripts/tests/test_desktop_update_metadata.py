@@ -20,7 +20,7 @@ POLICY = Path("rust-lib/flowy-user/resources/desktop_server_compatibility.json")
 STEP_NAME = "Generate desktop update manifest"
 WORKFLOWS = {
     "release.yml": "prepare",
-    "macos.yaml": "arm64",
+    "macos.yaml": "universal",
     "windows.yaml": "build",
     "linux.yaml": "prepare",
 }

@@ -43,13 +43,18 @@ env:
   RUST_TOOLCHAIN: "1.92.0"
 
 jobs:
-  macos-arm64:
+  macos:
+    name: macOS (${{ matrix.arch }})
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
 
     if: ${{ github.event.inputs.platform == 'all platforms' || github.event.inputs.platform == 'macos' }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           repository: ${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}
           ref: main
@@ -64,7 +69,7 @@ jobs:
       - name: Get latest release if version not specified
         if: ${{ github.event.inputs.appflowyVersion == '' }}
         id: latest_release
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const release = await github.rest.repos.getLatestRelease({
@@ -76,7 +81,7 @@ jobs:
       - name: Get specific release if version specified
         if: ${{ github.event.inputs.appflowyVersion != '' }}
         id: specific_release
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const release = await github.rest.repos.getReleaseByTag({
@@ -90,9 +95,9 @@ jobs:
         working-directory: frontend/appflowy_flutter
         run: |
           VERSION=${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}
-          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-arm64.dmg
+          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.arch }}.dmg
           echo "Downloading $ASSETS_URL"
-          curl -L -o app.dmg $ASSETS_URL
+          curl --fail --location --output app.dmg "$ASSETS_URL"
 
       - name: Generate EdSignature for macOS
         working-directory: frontend/appflowy_flutter
@@ -114,13 +119,13 @@ jobs:
           fi
           SIGNATURE=$(grep -o 'sparkle:edSignature="[^"]*"' edSignature.txt | cut -d'"' -f2)
           LENGTH=$(grep -o 'length="[^"]*"' edSignature.txt | cut -d'"' -f2 | tr -d '\n')
-          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-arm64.dmg
+          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.arch }}.dmg
 
           echo "VERSION: $VERSION"
           echo "SIGNATURE: $SIGNATURE"
           echo "LENGTH: $LENGTH"
 
-          APPCAST_FILE_NAME="appcast-macos-arm64.xml"
+          APPCAST_FILE_NAME="appcast-macos-${{ matrix.arch }}.xml"
 
           # Create appcast.xml
           echo '<?xml version="1.0" encoding="UTF-8"?>' > $APPCAST_FILE_NAME
@@ -154,9 +159,9 @@ jobs:
       - name: Upload Appcast files
         uses: actions/upload-artifact@v4
         with:
-          name: appcast-macos-arm64.xml
+          name: appcast-macos-${{ matrix.arch }}.xml
           path: |
-            frontend/appflowy_flutter/appcast-macos-arm64.xml
+            frontend/appflowy_flutter/appcast-macos-${{ matrix.arch }}.xml
           if-no-files-found: error
           compression-level: 0
 
@@ -411,8 +416,8 @@ jobs:
 
   update-release-version:
     runs-on: ubuntu-latest
-    needs: [macos-arm64, windows-x86_64, linux-x86_64]
-    if: always() && (needs.macos-arm64.result == 'success' || needs.windows-x86_64.result == 'success' || needs.linux-x86_64.result == 'success')
+    needs: [macos, windows-x86_64, linux-x86_64]
+    if: always() && (needs.macos.result == 'success' || needs.windows-x86_64.result == 'success' || needs.linux-x86_64.result == 'success')
 
     steps:
       - uses: actions/checkout@v3

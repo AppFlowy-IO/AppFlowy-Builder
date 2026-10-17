@@ -51,13 +51,13 @@ env:
   FLUTTER_VERSION: "3.41.9"
 
 jobs:
-  arm64:
+  universal:
     runs-on: macos-latest
 
     env:
+      BUILD_VERSION: ${{ inputs.build_name }}
       MACOS_APP_RELEASE_PATH: frontend/appflowy_flutter/product/${{ inputs.build_name }}/macos/Release
-      MACOS_ZIP_NAME: AppFlowy-${{ inputs.build_name }}-macos-arm64.zip
-      MACOS_DMG_NAME: AppFlowy-${{ inputs.build_name }}-macos-arm64
+      MACOS_ASSET_PREFIX: AppFlowy-${{ inputs.build_name }}-macos
       MACOS_ENTITLEMENTS_PATH: frontend/appflowy_flutter/macos/Runner/Release.entitlements
 
     steps:
@@ -67,6 +67,13 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Checkout packaging tools
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: .builder
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -104,13 +111,13 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.92.0
         with:
-          targets: aarch64-apple-darwin
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
           components: rustfmt
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: macos-arm64
+          prefix-key: macos-universal
           cache-all-crates: true
           cache-on-failure: true
           workspaces: |
@@ -136,20 +143,31 @@ jobs:
           git config --global credential.helper store
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Build AppFlowy (ARM64)
+      - name: Build AppFlowy (Universal)
         working-directory: frontend
-        env:
-          ARCHS: arm64
         run: |
-          echo "🔧 Building AppFlowy for ARM64 only"
+          echo "🔧 Building AppFlowy for ARM64 and x86_64"
           echo "Runner architecture: $(uname -m)"
-          echo "Rust target: aarch64-apple-darwin"
+          rustup target list --installed
 
           flutter config --enable-macos-desktop
-          cargo make --profile production-mac-arm64 --env APP_VERSION=${{ inputs.build_name }} appflowy
+          bash -e -o pipefail scripts/flutter_release_build/build_universal_package_for_macos.sh "$BUILD_VERSION"
 
-          test -d "appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/AppFlowy.app"
-          file "appflowy_flutter/product/${{ inputs.build_name }}/macos/Release/AppFlowy.app/Contents/MacOS/AppFlowy"
+          app="appflowy_flutter/product/$BUILD_VERSION/macos/Release/AppFlowy.app"
+          test -d "$app"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/AppFlowy"
+
+      - name: Prepare architecture-specific apps
+        run: |
+          set -euo pipefail
+          mkdir -p "$MACOS_APP_RELEASE_PATH/universal"
+          mv "$MACOS_APP_RELEASE_PATH/AppFlowy.app" "$MACOS_APP_RELEASE_PATH/universal/AppFlowy.app"
+          for arch in arm64 x86_64; do
+            mkdir -p "$MACOS_APP_RELEASE_PATH/$arch"
+            bash .builder/.github/scripts/thin_app.sh \
+              "$MACOS_APP_RELEASE_PATH/universal/AppFlowy.app" \
+              "$arch" "$MACOS_APP_RELEASE_PATH/$arch/AppFlowy.app"
+          done
 
       - name: Codesign AppFlowy
         run: |
@@ -166,44 +184,50 @@ jobs:
           security import certificate.p12 -k build.keychain -P ${{ secrets.P12_PASSWORD }} -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k action build.keychain
 
-          if [ ! -d "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" ]; then
-            echo "❌ AppFlowy.app not found at ${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app"
-            exit 1
-          fi
-
-          /usr/bin/codesign \
-            --force \
-            --options runtime \
-            --timestamp \
-            --deep \
-            --entitlements "${{ env.MACOS_ENTITLEMENTS_PATH }}" \
-            --sign "${{ secrets.MACOS_CODESIGN_ID }}" \
-            "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" \
-            -v
+          for arch in universal arm64 x86_64; do
+            app="$MACOS_APP_RELEASE_PATH/$arch/AppFlowy.app"
+            test -d "$app"
+            /usr/bin/codesign \
+              --force \
+              --options runtime \
+              --timestamp \
+              --deep \
+              --entitlements "$MACOS_ENTITLEMENTS_PATH" \
+              --sign "${{ secrets.MACOS_CODESIGN_ID }}" \
+              "$app" \
+              -v
+            /usr/bin/codesign --verify --strict --deep -v "$app"
+          done
           echo "✅ Code signing completed"
 
-      - name: Create macOS DMG
+      - name: Create macOS DMGs
         run: |
           brew install create-dmg
-          i=0
-          until [[ -e "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" ]]; do
-            create-dmg \
-              --volname "${{ env.MACOS_DMG_NAME }}" \
-              --hide-extension "AppFlowy.app" \
-              --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
-              --window-size 600 450 \
-              --icon-size 94 \
-              --icon "AppFlowy.app" 141 249 \
-              --app-drop-link 458 249 \
-              "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
-              "${{ env.MACOS_APP_RELEASE_PATH }}/AppFlowy.app" || true
-            if [[ $i -eq 10 ]]; then
-              echo "❌ create-dmg did not succeed after 10 attempts"
-              exit 1
-            fi
-            i=$((i + 1))
+          for arch in universal arm64 x86_64; do
+            dmg="$MACOS_APP_RELEASE_PATH/$MACOS_ASSET_PREFIX-$arch.dmg"
+            for attempt in $(seq 1 10); do
+              # A failed attempt can leave an incomplete image behind.
+              rm -f "$dmg"
+              if create-dmg \
+                --volname "$MACOS_ASSET_PREFIX-$arch" \
+                --hide-extension "AppFlowy.app" \
+                --background frontend/scripts/dmg_assets/AppFlowyInstallerBackground.jpg \
+                --window-size 600 450 \
+                --icon-size 94 \
+                --icon "AppFlowy.app" 141 249 \
+                --app-drop-link 458 249 \
+                "$dmg" \
+                "$MACOS_APP_RELEASE_PATH/$arch/AppFlowy.app"; then
+                test -s "$dmg"
+                break
+              fi
+              if [[ "$attempt" -eq 10 ]]; then
+                echo "❌ create-dmg failed for $arch after 10 attempts"
+                exit 1
+              fi
+            done
           done
-          echo "✅ ARM64 DMG created"
+          echo "✅ Universal, ARM64, and x86_64 DMGs created"
 
       - name: Check notarization secrets
         id: secret-check
@@ -217,52 +241,91 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Notarize ARM64 DMG
+      - name: Notarize macOS DMGs
         if: ${{ steps.secret-check.outputs.available == 'true' }}
         run: |
           MAX_RETRIES=3
-          for attempt in $(seq 1 "$MAX_RETRIES"); do
-            echo "📝 Notarization attempt $attempt/$MAX_RETRIES..."
-            if xcrun notarytool submit \
-              "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg" \
-              --apple-id "${{ secrets.MACOS_NOTARY_USER }}" \
-              --team-id "${{ secrets.MACOS_TEAM_ID }}" \
-              --password "${{ secrets.MACOS_NOTARY_PWD }}" \
-              --output-format json \
-              --wait; then
-              xcrun stapler staple "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg"
-              echo "✅ Notarization and stapling completed"
-              break
-            fi
+          for arch in universal arm64 x86_64; do
+            dmg="$MACOS_APP_RELEASE_PATH/$MACOS_ASSET_PREFIX-$arch.dmg"
+            for attempt in $(seq 1 "$MAX_RETRIES"); do
+              echo "📝 $arch notarization attempt $attempt/$MAX_RETRIES..."
+              if xcrun notarytool submit \
+                "$dmg" \
+                --apple-id "${{ secrets.MACOS_NOTARY_USER }}" \
+                --team-id "${{ secrets.MACOS_TEAM_ID }}" \
+                --password "${{ secrets.MACOS_NOTARY_PWD }}" \
+                --output-format json \
+                --wait; then
+                xcrun stapler staple "$dmg"
+                echo "✅ $arch notarization and stapling completed"
+                break
+              fi
 
-            if [[ "$attempt" -eq "$MAX_RETRIES" ]]; then
-              echo "❌ Notarization failed after $MAX_RETRIES attempts"
-              exit 1
-            fi
-            sleep 10
+              if [[ "$attempt" -eq "$MAX_RETRIES" ]]; then
+                echo "❌ $arch notarization failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+              sleep 10
+            done
           done
 
-      - name: Verify ARM64 DMG
+      - name: Verify macOS DMGs
         if: ${{ steps.secret-check.outputs.available == 'true' }}
-        run: xcrun stapler validate "${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg"
+        run: |
+          for arch in universal arm64 x86_64; do
+            xcrun stapler validate "$MACOS_APP_RELEASE_PATH/$MACOS_ASSET_PREFIX-$arch.dmg"
+          done
 
-      - name: Archive ARM64 app
+      - name: Archive macOS apps
         working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
-        run: zip --symlinks -qr "${{ env.MACOS_ZIP_NAME }}" AppFlowy.app
+        run: |
+          for arch in universal arm64 x86_64; do
+            (cd "$arch" && zip --symlinks -qr "../$MACOS_ASSET_PREFIX-$arch.zip" AppFlowy.app)
+          done
+
+      - name: Upload Universal ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_ASSET_PREFIX }}-universal.zip
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ASSET_PREFIX }}-universal.zip
+          if-no-files-found: error
+
+      - name: Upload Universal DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_ASSET_PREFIX }}-universal.dmg
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ASSET_PREFIX }}-universal.dmg
+          if-no-files-found: error
 
       - name: Upload ARM64 ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MACOS_ZIP_NAME }}
-          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ZIP_NAME }}
+          name: ${{ env.MACOS_ASSET_PREFIX }}-arm64.zip
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ASSET_PREFIX }}-arm64.zip
+          if-no-files-found: error
 
       - name: Upload ARM64 DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MACOS_DMG_NAME }}.dmg
-          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_DMG_NAME }}.dmg
+          name: ${{ env.MACOS_ASSET_PREFIX }}-arm64.dmg
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ASSET_PREFIX }}-arm64.dmg
+          if-no-files-found: error
 
-      - name: Upload ARM64 assets to Release
+      - name: Upload x86_64 ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_ASSET_PREFIX }}-x86_64.zip
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ASSET_PREFIX }}-x86_64.zip
+          if-no-files-found: error
+
+      - name: Upload x86_64 DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MACOS_ASSET_PREFIX }}-x86_64.dmg
+          path: ${{ env.MACOS_APP_RELEASE_PATH }}/${{ env.MACOS_ASSET_PREFIX }}-x86_64.dmg
+          if-no-files-found: error
+
+      - name: Upload macOS assets to Release
         if: inputs.upload_url != ''
         working-directory: ${{ env.MACOS_APP_RELEASE_PATH }}
         env:
@@ -270,16 +333,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           upload_url=$(printf '%s' "$UPLOAD_URL" | sed 's/{[^}]*}//g')
-          for filename in \
-            "${{ env.MACOS_ZIP_NAME }}" \
-            "${{ env.MACOS_DMG_NAME }}.dmg"; do
-            encoded_filename=$(printf '%s' "$filename" | jq -sRr @uri)
-            echo "Uploading $filename to release..."
-            curl -L -X POST \
-              -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary "@$filename" \
-              "${upload_url}?name=${encoded_filename}" \
-              --fail-with-body
+          for arch in universal arm64 x86_64; do
+            for extension in zip dmg; do
+              filename="$MACOS_ASSET_PREFIX-$arch.$extension"
+              encoded_filename=$(printf '%s' "$filename" | jq -sRr @uri)
+              echo "Uploading $filename to release..."
+              curl -L -X POST \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$filename" \
+                "${upload_url}?name=${encoded_filename}" \
+                --fail-with-body
+            done
           done
