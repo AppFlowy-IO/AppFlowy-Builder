@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise macOS thinning and the workflow's ZIP step with real Mach-O files."""
+"""Exercise macOS verification, thinning, and ZIP steps with real Mach-O files."""
 
 import os
 from pathlib import Path
@@ -28,7 +28,7 @@ def require(condition, message):
 
 
 def architectures(binary):
-    return set(run("lipo", "-archs", str(binary)).stdout.split())
+    return set(run("xcrun", "lipo", str(binary), "-archs").stdout.split())
 
 
 def main():
@@ -66,6 +66,8 @@ def main():
         shutil.copy2(THIN, tools / THIN.name)
         environment = {**os.environ, "MACOS_APP_RELEASE_PATH": str(release),
                        "MACOS_ASSET_PREFIX": "AppFlowy-0.14.9-macos"}
+        verification = steps["Verify universal app"]["run"]
+        run("bash", "-e", "-o", "pipefail", "-c", verification, cwd=root, env=environment)
         run("bash", "-e", "-o", "pipefail", "-c",
             steps["Prepare architecture-specific apps"]["run"], cwd=root, env=environment)
         run("bash", "-e", "-o", "pipefail", "-c",
@@ -93,6 +95,13 @@ def main():
                 extracted = root / f"archived-{arch}"
                 extracted.write_bytes(archive.read(f"AppFlowy.app/{executable}"))
                 require(architectures(extracted) == expected, f"{arch}: wrong archived binary")
+            if arch != "universal":
+                result = subprocess.run(
+                    ["bash", "-e", "-o", "pipefail", "-c", verification], cwd=root,
+                    env={**environment, "MACOS_APP_RELEASE_PATH": str(release / arch)},
+                    capture_output=True, text=True, check=False,
+                )
+                require(result.returncode != 0, f"Universal verification accepted a {arch}-only app")
         universal = release / "universal/AppFlowy.app"
         require((universal / executable).read_bytes() == original_binary,
                 "Thinning modified the universal executable")
@@ -120,7 +129,7 @@ def main():
         require(result.returncode != 0 and "Output already exists" in result.stderr,
                 "Thinning overwrote an existing app")
 
-    print("PASS macOS packages: real universal/ARM64/Intel Mach-O files, framework symlinks,")
+    print("PASS macOS packages: universal verification, real ARM64/Intel Mach-O files, framework symlinks,")
     print("     permissions, ZIP contents, unchanged source, and incompatible-slice rejection")
 
 

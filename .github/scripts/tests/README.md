@@ -9,9 +9,11 @@ python3 .github/scripts/tests/test_macos_package.py
 ```
 
 This compiles real universal Mach-O executables and framework libraries, runs
-the workflow's app preparation and ZIP steps, and checks all three architectures,
+the workflow's universal verification, app preparation, and ZIP steps with the
+active Xcode toolchain, and checks all three architectures,
 framework symlinks, file permissions, and archive contents. It also checks that
-thinning preserves the universal source and rejects incompatible nested binaries.
+universal verification rejects single-architecture apps and thinning preserves
+the universal source and rejects incompatible nested binaries.
 Signing, DMG creation, notarization, and the full Flutter/Rust build require CI.
 
 ## Desktop update manifest regression checks
