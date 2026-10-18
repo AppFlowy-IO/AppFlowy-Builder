@@ -153,9 +153,15 @@ jobs:
           flutter config --enable-macos-desktop
           bash -e -o pipefail scripts/flutter_release_build/build_universal_package_for_macos.sh "$BUILD_VERSION"
 
-          app="appflowy_flutter/product/$BUILD_VERSION/macos/Release/AppFlowy.app"
+      - name: Verify universal app
+        run: |
+          app="$MACOS_APP_RELEASE_PATH/AppFlowy.app"
           test -d "$app"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/AppFlowy"
+          # Apple lipo consumes all trailing arguments as architecture names.
+          # Check one slice per invocation for compatibility with LLVM lipo too.
+          for arch in arm64 x86_64; do
+            xcrun lipo "$app/Contents/MacOS/AppFlowy" -verify_arch "$arch"
+          done
 
       - name: Prepare architecture-specific apps
         run: |

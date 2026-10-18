@@ -33,15 +33,15 @@ while IFS= read -r -d '' binary; do
     continue
   fi
 
-  if ! lipo -verify_arch "$ARCH" "$binary"; then
+  if ! xcrun lipo "$binary" -verify_arch "$ARCH"; then
     echo "Missing $ARCH slice: $binary" >&2
     exit 1
   fi
 
-  read -r -a archs <<< "$(lipo -archs "$binary")"
+  read -r -a archs <<< "$(xcrun lipo "$binary" -archs)"
   if [[ ${#archs[@]} -gt 1 ]]; then
     echo "Thinning: $binary"
-    lipo "$binary" -thin "$ARCH" -output "${binary}.thin"
+    xcrun lipo "$binary" -thin "$ARCH" -output "${binary}.thin"
     chmod "$(stat -f '%Lp' "$binary")" "${binary}.thin"
     mv "${binary}.thin" "$binary"
   fi
