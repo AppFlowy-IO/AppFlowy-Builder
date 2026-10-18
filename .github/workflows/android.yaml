@@ -70,6 +70,9 @@ on:
 env:
   FLUTTER_VERSION: "3.41.9"
   RUST_TOOLCHAIN: "1.92.0"
+  # Avoid one large fat-LTO module when linking the Android FFI library.
+  # Keep this visible to rust-cache so it separates the release profiles.
+  CARGO_PROFILE_RELEASE_LTO: "thin"
 
 jobs:
   build:
@@ -172,7 +175,7 @@ jobs:
           sudo wget -qO /etc/apt/trusted.gpg.d/dart_linux_signing_key.asc https://dl-ssl.google.com/linux/linux_signing_key.pub
           sudo wget -qO /etc/apt/sources.list.d/dart_stable.list https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list
           sudo apt-get update
-          sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install -y dart curl build-essential libssl-dev clang cmake ninja-build pkg-config libgtk-3-dev procps time
           sudo apt-get install keybinder-3.0 libnotify-dev
           sudo apt-get install gcc-multilib
           sudo apt-get -y install libmpv-dev mpv
@@ -204,14 +207,31 @@ jobs:
           git config --global credential.helper store
           echo "https://${{ secrets.ADMIN_GITHUB_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Build AppFlowy
+      - name: Build Android native library
         working-directory: frontend
         env:
           # Match the app's minSdkVersion. RocksDB 10.4 requires Android API 23+
           # for POSIX_MADV_* definitions, while cargo-ndk otherwise defaults to 21.
           CARGO_NDK_PLATFORM: "29"
         run: |
-          cargo make --profile production-android appflowy-core-dev-android
+          (
+            while true; do
+              date -u '+Native build resources: %Y-%m-%dT%H:%M:%SZ'
+              free -m
+              ps -eo pid,comm,rss --sort=-rss | sed -n '1,6p'
+              sleep 30
+            done
+          ) &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
+
+          /usr/bin/time -v cargo make --profile production-android appflowy-core-dev-android
+
+      - name: Build AppFlowy
+        working-directory: frontend
+        env:
+          CARGO_NDK_PLATFORM: "29"
+        run: |
           cargo make --profile production-android code_generation
 
           cd appflowy_flutter
