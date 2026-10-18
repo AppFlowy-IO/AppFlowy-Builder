@@ -1,0 +1,50 @@
+{
+  "source": "https://github.com/AppFlowy-IO/AppFlowy-Builder/actions/runs/39089398788/job/117562773270",
+  "job": {
+    "id": 117562773270,
+    "name": "Build Windows / build",
+    "status": "completed",
+    "conclusion": "failure",
+    "run_attempt": 1,
+    "steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 1,
+        "started_at": "2026-10-18T02:15:19Z",
+        "completed_at": "2026-10-18T02:16:54Z"
+      }
+    ],
+    "labels": [
+      "windows-latest"
+    ],
+    "check_run_url": "https://api.github.com/repos/AppFlowy-IO/AppFlowy-Builder/check-runs/117562773270"
+  },
+  "annotations": [
+    {
+      "annotation_level": "failure",
+      "message": "Failed to download archive 'https://codeload.github.com/subosito/flutter-action/zip/1a449444c387b1966244ae4d4f8c696479add0b2' after 3 attempts."
+    },
+    {
+      "annotation_level": "failure",
+      "message": "A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (codeload.github.com:443)"
+    },
+    {
+      "annotation_level": "warning",
+      "message": "Back off 18.684 seconds before retry."
+    },
+    {
+      "annotation_level": "warning",
+      "message": "Failed to download action 'https://codeload.github.com/subosito/flutter-action/zip/1a449444c387b1966244ae4d4f8c696479add0b2'. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (codeload.github.com:443) "
+    },
+    {
+      "annotation_level": "warning",
+      "message": "Back off 11.99 seconds before retry."
+    },
+    {
+      "annotation_level": "warning",
+      "message": "Failed to download action 'https://codeload.github.com/subosito/flutter-action/zip/1a449444c387b1966244ae4d4f8c696479add0b2'. Error: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (codeload.github.com:443) "
+    }
+  ]
+}
