@@ -1,0 +1,41 @@
+name: Retry transient action downloads
+
+on:
+  workflow_run:
+    workflows:
+      - Build AppFlowy Application
+      - Build AppFlowy Android
+      - Build AppFlowy iOS
+      - Build AppFlowy Linux
+      - Build AppFlowy macOS
+      - Build AppFlowy Windows
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: retry-action-downloads-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # A setup failure happens before steps can run. Use a separate runner,
+      # without marketplace actions, and load only this workflow's trusted code.
+      - name: Retry a transient action-download failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          script="$RUNNER_TEMP/retry_action_downloads.py"
+          gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/contents/.github/scripts/retry_action_downloads.py?ref=$GITHUB_SHA" \
+            --header "Accept: application/vnd.github.raw+json" > "$script"
+          python3 "$script" --run-id "$RUN_ID" --expected-attempt "$RUN_ATTEMPT" --execute
