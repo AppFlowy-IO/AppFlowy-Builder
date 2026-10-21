@@ -8,7 +8,7 @@ on:
         description: "Release version (e.g., 0.10.7)"
         required: true
         type: string
-        default: "0.14.9"
+        default: "0.14.10"
       branch:
         description: "Source branch for build"
         required: true
@@ -88,7 +88,7 @@ jobs:
             INTERNAL_BUILD="${{ github.event.inputs.internal_build }}"
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             # Scheduled trigger - build all platforms with default settings
-            VERSION="0.14.9"
+            VERSION="0.14.10"
             BRANCH_NAME="main"
             PLATFORMS="all"
             ANDROID_BUILD_TYPE="both"
