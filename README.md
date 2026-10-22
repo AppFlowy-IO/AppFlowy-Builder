@@ -34,9 +34,12 @@ packages as `AppFlowy-<version>-macos-<architecture>.dmg` and `.zip` assets,
 where `<architecture>` is `universal`, `arm64`, or `x86_64`. Each package
 contains `AppFlowy.app`. The source repository's universal build script builds
 both Rust targets once, then Builder thins the app for each architecture before
-signing and notarizing all three packages. Rust release compiler settings are
-unchanged. Auto-update generates separate ARM64 and x86_64 appcasts pointing to
-their matching DMGs.
+signing and notarizing all three packages. The release workflow's `macos_arch`
+input and the standalone workflow's `arch` input default to `All`. Flutter and
+Rust build caching are disabled; Rust release compiler settings are unchanged.
+Auto-update generates separate ARM64 and x86_64 appcasts. As before the
+ARM64-only change, the ARM64 appcast points to the universal DMG and the x86_64
+appcast points to the x86_64 DMG.
 
 To build for macOS, set the following secrets:
 

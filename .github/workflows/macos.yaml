@@ -16,6 +16,13 @@ on:
         description: "Build Version (it should match the version in pubspec.yaml)"
         required: true
         default: "0.14.10"
+      arch:
+        type: choice
+        description: "Build Architecture (ARM64, x86_64, and universal)"
+        required: true
+        default: "All"
+        options:
+          - All
       internal_build:
         type: choice
         description: "Internal Build Type (1 for internal, 0 for external)"
@@ -38,6 +45,11 @@ on:
         description: "Build Version"
         required: true
         type: string
+      arch:
+        description: "Build Architecture"
+        required: false
+        type: string
+        default: "All"
       internal_build:
         description: "Internal Build Type"
         required: true
@@ -53,6 +65,8 @@ env:
 jobs:
   universal:
     runs-on: macos-latest
+
+    if: ${{ inputs.arch == 'All' || inputs.arch == 'universal' }}
 
     env:
       BUILD_VERSION: ${{ inputs.build_name }}
@@ -104,7 +118,6 @@ jobs:
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
-          cache: true
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
@@ -113,15 +126,6 @@ jobs:
         with:
           targets: aarch64-apple-darwin, x86_64-apple-darwin
           components: rustfmt
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: macos-universal
-          cache-all-crates: true
-          cache-on-failure: true
-          workspaces: |
-            frontend/rust-lib
 
       - name: Install build tools
         uses: taiki-e/install-action@v2

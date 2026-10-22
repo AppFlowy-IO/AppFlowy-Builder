@@ -49,7 +49,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, x86_64]
+        include:
+          # Preserve the updater asset mapping from before the ARM64-only change.
+          - arch: arm64
+            package_arch: universal
+          - arch: x86_64
+            package_arch: x86_64
 
     if: ${{ github.event.inputs.platform == 'all platforms' || github.event.inputs.platform == 'macos' }}
 
@@ -95,7 +100,7 @@ jobs:
         working-directory: frontend/appflowy_flutter
         run: |
           VERSION=${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}
-          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.arch }}.dmg
+          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.package_arch }}.dmg
           echo "Downloading $ASSETS_URL"
           curl --fail --location --output app.dmg "$ASSETS_URL"
 
@@ -119,7 +124,7 @@ jobs:
           fi
           SIGNATURE=$(grep -o 'sparkle:edSignature="[^"]*"' edSignature.txt | cut -d'"' -f2)
           LENGTH=$(grep -o 'length="[^"]*"' edSignature.txt | cut -d'"' -f2 | tr -d '\n')
-          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.arch }}.dmg
+          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.package_arch }}.dmg
 
           echo "VERSION: $VERSION"
           echo "SIGNATURE: $SIGNATURE"
