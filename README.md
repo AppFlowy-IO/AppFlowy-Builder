@@ -137,3 +137,28 @@ python3 frontend/scripts/tool/generate_desktop_update_manifest.py \
 - Select the workflow you wish to run.
 - Click the `Run workflow` button.
 - Enter the required variables as prompted.
+
+### Legacy and native desktop updater feeds
+
+Dispatch `auto_update.yaml` with `updaterGeneration` set to `both` (default),
+`legacy`, or `native`. Omitted values from existing dispatch scripts mean `both`.
+Each selected macOS/Windows installer is downloaded and signed once; both feed
+variants share its signature, byte length, real build version, display version,
+compatibility metadata and critical-update marker.
+
+| Generation | Release asset / workflow artifact | Discovery |
+| --- | --- | --- |
+| Legacy | `appcast-{os}-{arch}.xml` | Existing clients use GitHub's latest-release URL |
+| Native | `native-appcast-{os}-{arch}.xml` | New clients receive a version-pinned URL from their server |
+
+Publish the selected artifacts to the matching release with these exact filenames.
+Do not overwrite a legacy filename with only a native-prefixed asset. Linux retains
+its legacy feed only; `native` plus `linux` generates no feeds and does not advance
+the release default. Generation does not upload assets to a release automatically.
+
+The Admin toggle governs only new clients. Legacy clients do not query that policy;
+selecting `native` skips generating legacy feeds but does not remove previously
+published legacy assets. If older clients must stay on a different target version,
+generate their legacy feed separately with that target's `appflowyVersion`; any
+publication through a moving latest-release URL must be coordinated explicitly.
+No workflow run or release publication is implied by merging this workflow.

@@ -12,6 +12,15 @@ on:
           - macos
           - windows
           - linux
+      updaterGeneration:
+        description: "Updater feeds to generate"
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - legacy
+          - native
       criticalUpdate:
         description: "Whether to create a critical update"
         required: false
@@ -37,26 +46,168 @@ on:
         default: "AppFlowy"
 
 env:
-  # Must match AppFlowy main's Flutter version — this workflow runs
-  # `flutter pub get` against AppFlowy's pubspec.
-  FLUTTER_VERSION: "3.27.4"
-  RUST_TOOLCHAIN: "1.92.0"
+  GH_TOKEN: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
 jobs:
-  macos:
-    name: macOS (${{ matrix.arch }})
-    runs-on: macos-latest
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - id: release
+        env:
+          REQUESTED_TAG: ${{ inputs.appflowyVersion }}
+          REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
+        run: |
+          set -euo pipefail
+          TAG="$REQUESTED_TAG"
+          if [ -z "$TAG" ]; then TAG=$(gh api "repos/$REPOSITORY/releases/latest" --jq .tag_name); fi
+          [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+  native:
+    needs: resolve
+    if: inputs.platform != 'linux'
+    name: ${{ matrix.os }} (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Preserve the updater asset mapping from before the ARM64-only change.
-          - arch: arm64
-            package_arch: universal
-          - arch: x86_64
-            package_arch: x86_64
+          - { os: macos, arch: arm64, package_arch: universal, runner: macos-latest }
+          - { os: macos, arch: x86_64, package_arch: x86_64, runner: macos-latest }
+          - { os: windows, arch: x86_64, package_arch: x86_64, runner: windows-latest }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve exact published release
+        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
+        shell: bash
+        env:
+          REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
+          REQUESTED_TAG: ${{ needs.resolve.outputs.tag }}
+          ADVERTISED_VERSION: ${{ inputs.releaseVersionNumber }}
+        run: |
+          set -euo pipefail
+          TAG="$REQUESTED_TAG"
+          if [ -z "$TAG" ]; then TAG=$(gh api "repos/$REPOSITORY/releases/latest" --jq .tag_name); fi
+          gh api "repos/$REPOSITORY/releases/tags/$TAG" > release.json
+          python3 - "$TAG" <<'PYCODE'
+          import json, os, re, sys
+          release = json.load(open('release.json'))
+          tag = sys.argv[1]
+          version = tag.removeprefix('v')
+          assert re.fullmatch(r'\d+\.\d+\.\d+', version), 'Stable release required'
+          assert not release['draft'] and not release['prerelease'], 'Published stable release required'
+          override = os.environ['ADVERTISED_VERSION'].removeprefix('v')
+          assert not override or override == version, 'Feed must advertise the actual installer version'
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'TAG={tag}\nVERSION={version}\nREPOSITORY={os.environ["REPOSITORY"]}\n')
+          PYCODE
+      - name: Download final installer
+        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+          PACKAGE_ARCH: ${{ matrix.package_arch }}
+        run: |
+          set -euo pipefail
+          EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
+          ASSET="AppFlowy-$VERSION-$OS-$PACKAGE_ARCH.$EXT"
+          gh release download "$TAG" --repo "$REPOSITORY" --pattern "$ASSET" --output "app.$EXT"
+          python3 - "$ASSET" "app.$EXT" <<'PYCODE'
+          import json, pathlib, sys
+          assets = [a for a in json.load(open('release.json'))['assets'] if a['name'] == sys.argv[1]]
+          assert len(assets) == 1 and assets[0]['size'] == pathlib.Path(sys.argv[2]).stat().st_size > 0
+          PYCODE
+      - name: Sign macOS installer and read its actual build version
+        if: matrix.os == 'macos' && (inputs.platform == 'all platforms' || inputs.platform == 'macos')
+        shell: bash
+        env:
+          UPDATE_PRIVATE_KEY: ${{ secrets.MACOS_AUTO_UPDATE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          curl --fail --location https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz -o sparkle.tar.xz
+          echo '5cddb7695674ef7704268f38eccaee80e3accbf19e61c1689efff5b6116d85be  sparkle.tar.xz' | shasum -a 256 -c -
+          mkdir sparkle && tar -xf sparkle.tar.xz -C sparkle
+          printf '%s' "$UPDATE_PRIVATE_KEY" | sparkle/bin/sign_update --ed-key-file - -p app.dmg > signature.txt
+          mkdir mount
+          hdiutil attach -readonly -nobrowse -mountpoint "$PWD/mount" app.dmg
+          trap 'hdiutil detach "$PWD/mount"' EXIT
+          python3 - <<'PYCODE'
+          import glob, os, plistlib
+          plists = glob.glob('mount/*.app/Contents/Info.plist')
+          assert len(plists) == 1, 'Expected one application'
+          with open(plists[0], 'rb') as source: info = plistlib.load(source)
+          assert info['CFBundleShortVersionString'] == os.environ['VERSION']
+          with open(os.environ['GITHUB_ENV'], 'a') as output: output.write(f"BUILD_VERSION={info['CFBundleVersion']}\n")
+          PYCODE
+      - name: Sign Windows installer
+        if: matrix.os == 'windows' && (inputs.platform == 'all platforms' || inputs.platform == 'windows')
+        shell: bash
+        env:
+          UPDATE_PRIVATE_KEY: ${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$UPDATE_PRIVATE_KEY"
+          umask 077
+          trap 'rm -f update-key.pem signature.bin' EXIT
+          printf '%s' "$UPDATE_PRIVATE_KEY" > update-key.pem
+          openssl dgst -sha1 -sign update-key.pem -out signature.bin app.exe
+          openssl base64 -A -in signature.bin > signature.txt
+          echo "BUILD_VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Read release compatibility manifest
+        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python3 -c 'import json,sys; sys.exit(not any(a["name"] == "desktop-update.json" for a in json.load(open("release.json"))["assets"]))'; then
+            gh release download "$TAG" --repo "$REPOSITORY" --pattern desktop-update.json --output desktop-update.json
+            python3 - <<'PYCODE'
+          import json, os, re
+          metadata = json.load(open('desktop-update.json'))
+          assert metadata['version'].removeprefix('v') == os.environ['VERSION']
+          floor = metadata['minimum_server_version']
+          assert re.fullmatch(r'\d+\.\d+\.\d+', floor)
+          with open(os.environ['GITHUB_ENV'], 'a') as output: output.write(f'MINIMUM_SERVER_VERSION={floor}\n')
+          PYCODE
+          fi
+      - name: Generate legacy and native appcasts
+        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+          PACKAGE_ARCH: ${{ matrix.package_arch }}
+          CRITICAL: ${{ inputs.criticalUpdate }}
+          UPDATER_GENERATION: ${{ inputs.updaterGeneration || 'both' }}
+        run: |
+          set -euo pipefail
+          EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
+          EXTRA=()
+          if [ "$CRITICAL" = true ]; then EXTRA+=(--critical); fi
+          if [ -n "${MINIMUM_SERVER_VERSION:-}" ]; then EXTRA+=(--minimum-server-version "$MINIMUM_SERVER_VERSION"); fi
+          python3 scripts/generate_native_appcast.py "${EXTRA[@]}" --tag "$TAG" --platform "$OS" --arch "$ARCH" --package-arch "$PACKAGE_ARCH" --installer "app.$EXT" --signature-file signature.txt --build-version "$BUILD_VERSION" --repository "$REPOSITORY" --generation "$UPDATER_GENERATION" --output-dir feeds
+      - uses: actions/upload-artifact@v4
+        if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'native'
+        with:
+          name: appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          path: feeds/appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          if-no-files-found: error
+          compression-level: 0
 
-    if: ${{ github.event.inputs.platform == 'all platforms' || github.event.inputs.platform == 'macos' }}
+      - uses: actions/upload-artifact@v4
+        if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'legacy'
+        with:
+          name: native-appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          path: feeds/native-appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          if-no-files-found: error
+          compression-level: 0
+
+  linux-x86_64:
+    needs: resolve
+    runs-on: ubuntu-latest
+
+    if: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -64,15 +215,8 @@ jobs:
           repository: ${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}
           ref: main
 
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          cache: true
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
       - name: Get latest release if version not specified
-        if: ${{ github.event.inputs.appflowyVersion == '' }}
+        if: false
         id: latest_release
         uses: actions/github-script@v7
         with:
@@ -84,7 +228,7 @@ jobs:
             core.setOutput('version', release.data.tag_name);
 
       - name: Get specific release if version specified
-        if: ${{ github.event.inputs.appflowyVersion != '' }}
+        if: success()
         id: specific_release
         uses: actions/github-script@v7
         with:
@@ -92,281 +236,7 @@ jobs:
             const release = await github.rest.repos.getReleaseByTag({
               owner: '${{ github.event.inputs.repoOwner }}',
               repo: '${{ github.event.inputs.repoName }}',
-              tag: '${{ github.event.inputs.appflowyVersion }}'
-            });
-            core.setOutput('version', release.data.tag_name);
-
-      - name: Download release asset
-        working-directory: frontend/appflowy_flutter
-        run: |
-          VERSION=${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}
-          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.package_arch }}.dmg
-          echo "Downloading $ASSETS_URL"
-          curl --fail --location --output app.dmg "$ASSETS_URL"
-
-      - name: Generate EdSignature for macOS
-        working-directory: frontend/appflowy_flutter
-        run: |
-          flutter pub get && flutter packages pub get && cd macos && pod install && cd ..
-          echo ${{ secrets.MACOS_AUTO_UPDATE_PRIVATE_KEY }} > PRIVATE_KEY
-          dart run auto_updater:sign_update -f PRIVATE_KEY app.dmg > edSignature.txt
-          echo "EdSignature file content:"
-          cat edSignature.txt
-
-      - name: Generate Appcast.xml
-        working-directory: frontend/appflowy_flutter
-        run: |
-          VERSION=${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}
-          if [ "${{ github.event.inputs.releaseVersionNumber }}" != "" ]; then
-            RELEASE_VERSION_NUMBER=${{ github.event.inputs.releaseVersionNumber }}
-          else
-            RELEASE_VERSION_NUMBER=$VERSION
-          fi
-          SIGNATURE=$(grep -o 'sparkle:edSignature="[^"]*"' edSignature.txt | cut -d'"' -f2)
-          LENGTH=$(grep -o 'length="[^"]*"' edSignature.txt | cut -d'"' -f2 | tr -d '\n')
-          ASSETS_URL=https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-macos-${{ matrix.package_arch }}.dmg
-
-          echo "VERSION: $VERSION"
-          echo "SIGNATURE: $SIGNATURE"
-          echo "LENGTH: $LENGTH"
-
-          APPCAST_FILE_NAME="appcast-macos-${{ matrix.arch }}.xml"
-
-          # Create appcast.xml
-          echo '<?xml version="1.0" encoding="UTF-8"?>' > $APPCAST_FILE_NAME
-          echo '<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">' >> $APPCAST_FILE_NAME
-          echo '    <channel>' >> $APPCAST_FILE_NAME
-          echo '        <title>AppFlowy</title>' >> $APPCAST_FILE_NAME
-          echo '        <description>Most recent updates to AppFlowy</description>' >> $APPCAST_FILE_NAME
-          echo '        <language>en</language>' >> $APPCAST_FILE_NAME
-          echo '        <item>' >> $APPCAST_FILE_NAME
-          echo "            <title>Version $RELEASE_VERSION_NUMBER</title>" >> $APPCAST_FILE_NAME
-          echo "            <sparkle:version>2</sparkle:version>" >> $APPCAST_FILE_NAME
-          echo "            <sparkle:shortVersionString>$RELEASE_VERSION_NUMBER</sparkle:shortVersionString>" >> $APPCAST_FILE_NAME
-          if [ "${{ github.event.inputs.criticalUpdate }}" = "true" ]; then
-              echo "            <sparkle:criticalUpdate>true</sparkle:criticalUpdate>" >> $APPCAST_FILE_NAME
-          fi
-          echo "            <pubDate>$(date -R)</pubDate>" >> $APPCAST_FILE_NAME
-          echo "            <enclosure" >> $APPCAST_FILE_NAME
-          echo "                url=\"$ASSETS_URL\"" >> $APPCAST_FILE_NAME
-          echo "                sparkle:os=\"macos\"" >> $APPCAST_FILE_NAME
-          echo "                type=\"application/octet-stream\"" >> $APPCAST_FILE_NAME
-          echo "                sparkle:edSignature=\"$SIGNATURE\"" >> $APPCAST_FILE_NAME
-          echo "                length=\"$LENGTH\"" >> $APPCAST_FILE_NAME
-          echo "                />" >> $APPCAST_FILE_NAME
-          echo '        </item>' >> $APPCAST_FILE_NAME
-          echo '    </channel>' >> $APPCAST_FILE_NAME
-          echo '</rss>' >> $APPCAST_FILE_NAME
-
-          echo "Generated $APPCAST_FILE_NAME:"
-          cat $APPCAST_FILE_NAME
-
-      - name: Upload Appcast files
-        uses: actions/upload-artifact@v4
-        with:
-          name: appcast-macos-${{ matrix.arch }}.xml
-          path: |
-            frontend/appflowy_flutter/appcast-macos-${{ matrix.arch }}.xml
-          if-no-files-found: error
-          compression-level: 0
-
-  windows-x86_64:
-    runs-on: windows-latest
-
-    if: ${{ github.event.inputs.platform == 'all platforms' || github.event.inputs.platform == 'windows' }}
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          repository: ${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}
-          ref: main
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          cache: true
-          channel: "stable"
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: x86_64-pc-windows-msvc
-          override: true
-          components: rustfmt
-          profile: minimal
-
-      - uses: davidB/rust-cargo-make@v1
-        with:
-          version: "0.37.18"
-
-      - name: Install prerequisites
-        working-directory: frontend
-        run: |
-          vcpkg integrate install
-          cargo install duckscript_cli --force --locked
-
-      - name: Get latest release if version not specified
-        if: ${{ github.event.inputs.appflowyVersion == '' }}
-        id: latest_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getLatestRelease({
-              owner: '${{ github.event.inputs.repoOwner }}',
-              repo: '${{ github.event.inputs.repoName }}'
-            });
-            core.setOutput('version', release.data.tag_name);
-
-      - name: Get specific release if version specified
-        if: ${{ github.event.inputs.appflowyVersion != '' }}
-        id: specific_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: '${{ github.event.inputs.repoOwner }}',
-              repo: '${{ github.event.inputs.repoName }}',
-              tag: '${{ github.event.inputs.appflowyVersion }}'
-            });
-            core.setOutput('version', release.data.tag_name);
-
-      - name: Download release asset
-        working-directory: frontend/appflowy_flutter
-        run: |
-          $VERSION="${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}"
-          $ASSETS_URL="https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-windows-x86_64.exe"
-          echo "Downloading $ASSETS_URL"
-          curl -L -o app.exe $ASSETS_URL
-
-      - name: Install OpenSSL
-        shell: powershell
-        run: |
-          vcpkg install openssl:x64-windows
-
-      - name: Build AppFlowy
-        working-directory: frontend
-        run: |
-          flutter config --enable-windows-desktop
-          flutter pub get && flutter packages pub get
-          dart ./scripts/flutter_release_build/build_flowy.dart exclude-directives . $VERSION
-          cargo make --profile development-windows-x86 appflowy
-
-      - name: Generate EdSignature for Windows
-        working-directory: frontend/appflowy_flutter
-        shell: bash
-        run: |
-          if [ -f dsa_priv.pem ] && [ -s dsa_priv.pem ]; then
-            echo "Using repository dsa_priv.pem"
-          elif [ -n "${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}" ]; then
-            printf "%s" "${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}" > dsa_priv.pem
-          else
-            echo "Missing DSA private key (dsa_priv.pem or WINDOWS_AUTO_UPDATE_PRIVATE_KEY)." >&2
-            exit 1
-          fi
-          dart run auto_updater:sign_update app.exe > edSignature.txt
-          echo "EdSignature file content:"
-          cat edSignature.txt
-
-      - name: Generate Appcast.xml
-        working-directory: frontend/appflowy_flutter
-        run: |
-          $VERSION="${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}"
-          if ("${{ github.event.inputs.releaseVersionNumber }}" -ne "") {
-            $RELEASE_VERSION_NUMBER="${{ github.event.inputs.releaseVersionNumber }}"
-          } else {
-            $RELEASE_VERSION_NUMBER=$VERSION
-          }
-          $ASSETS_URL="https://github.com/${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}/releases/download/$VERSION/AppFlowy-$VERSION-windows-x86_64.exe"
-
-          $edSignatureContent = Get-Content edSignature.txt -Raw
-          $SIGNATURE = if ($edSignatureContent -match 'sparkle:dsaSignature="([^"]*)"') { $matches[1] } else { "" }
-          $LENGTH = if ($edSignatureContent -match 'length="([^"]*)"') { $matches[1] } else { "0" }
-
-          Write-Host "VERSION: $VERSION"
-          Write-Host "SIGNATURE: $SIGNATURE"
-          Write-Host "LENGTH: $LENGTH"
-
-          $APPCAST_FILE_NAME="appcast-windows-x86_64.xml"
-          $PUBDATE = Get-Date -Format "r"
-
-          $criticalUpdateLine = ""
-          if ("${{ github.event.inputs.criticalUpdate }}" -eq "true") {
-            $criticalUpdateLine = "            <sparkle:criticalUpdate>true</sparkle:criticalUpdate>"
-          }
-
-          # Create appcast.xml
-          @"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-              <channel>
-                  <title>AppFlowy</title>
-                  <description>Most recent updates to AppFlowy</description>
-                  <language>en</language>
-                  <item>
-                      <title>Version $RELEASE_VERSION_NUMBER</title>
-                      <sparkle:version>$RELEASE_VERSION_NUMBER</sparkle:version>
-                      <sparkle:shortVersionString>$RELEASE_VERSION_NUMBER</sparkle:shortVersionString>
-          $criticalUpdateLine
-                      <pubDate>$PUBDATE</pubDate>
-                      <enclosure
-                          url="$ASSETS_URL"
-                          sparkle:os="windows"
-                          type="application/octet-stream"
-                          sparkle:dsaSignature="$SIGNATURE"
-                          length="$LENGTH"
-                          />
-                  </item>
-              </channel>
-          </rss>
-          "@ | Set-Content -Path $APPCAST_FILE_NAME
-
-          Write-Host "Generated ${APPCAST_FILE_NAME}:"
-          Get-Content $APPCAST_FILE_NAME
-
-      - name: Upload Appcast files
-        uses: actions/upload-artifact@v4
-        with:
-          name: appcast-windows-x86_64.xml
-          path: |
-            frontend/appflowy_flutter/appcast-windows-x86_64.xml
-          if-no-files-found: error
-          compression-level: 0
-
-  linux-x86_64:
-    runs-on: ubuntu-latest
-
-    if: ${{ github.event.inputs.platform == 'all platforms' || github.event.inputs.platform == 'linux' }}
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          repository: ${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}
-          ref: main
-
-      - name: Get latest release if version not specified
-        if: ${{ github.event.inputs.appflowyVersion == '' }}
-        id: latest_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getLatestRelease({
-              owner: '${{ github.event.inputs.repoOwner }}',
-              repo: '${{ github.event.inputs.repoName }}'
-            });
-            core.setOutput('version', release.data.tag_name);
-
-      - name: Get specific release if version specified
-        if: ${{ github.event.inputs.appflowyVersion != '' }}
-        id: specific_release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: '${{ github.event.inputs.repoOwner }}',
-              repo: '${{ github.event.inputs.repoName }}',
-              tag: '${{ github.event.inputs.appflowyVersion }}'
+              tag: '${{ needs.resolve.outputs.tag }}'
             });
             core.setOutput('version', release.data.tag_name);
 
@@ -421,20 +291,24 @@ jobs:
 
   update-release-version:
     runs-on: ubuntu-latest
-    needs: [macos, windows-x86_64, linux-x86_64]
-    if: always() && (needs.macos.result == 'success' || needs.windows-x86_64.result == 'success' || needs.linux-x86_64.result == 'success')
+    needs: [resolve, native, linux-x86_64]
+    if: >-
+      always() && needs.resolve.result == 'success' &&
+      (needs.native.result == 'success' || needs.native.result == 'skipped') &&
+      (needs.linux-x86_64.result == 'success' || needs.linux-x86_64.result == 'skipped') &&
+      (needs.native.result == 'success' || needs.linux-x86_64.result == 'success')
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
       - name: Get version from workflow input
         id: get_version
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
-            let version = '${{ github.event.inputs.appflowyVersion }}';
+            let version = '${{ needs.resolve.outputs.tag }}';
 
             // If no version was specified, get the latest release
             if (!version) {
