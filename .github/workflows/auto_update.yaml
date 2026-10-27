@@ -12,6 +12,15 @@ on:
           - macos
           - windows
           - linux
+      updaterGeneration:
+        description: "Updater feeds to generate"
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - legacy
+          - native
       criticalUpdate:
         description: "Whether to create a critical update"
         required: false
@@ -162,7 +171,7 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as output: output.write(f'MINIMUM_SERVER_VERSION={floor}\n')
           PYCODE
           fi
-      - name: Generate version-pinned appcast
+      - name: Generate legacy and native appcasts
         if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         shell: bash
         env:
@@ -170,18 +179,27 @@ jobs:
           ARCH: ${{ matrix.arch }}
           PACKAGE_ARCH: ${{ matrix.package_arch }}
           CRITICAL: ${{ inputs.criticalUpdate }}
+          UPDATER_GENERATION: ${{ inputs.updaterGeneration || 'both' }}
         run: |
           set -euo pipefail
           EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
           EXTRA=()
           if [ "$CRITICAL" = true ]; then EXTRA+=(--critical); fi
           if [ -n "${MINIMUM_SERVER_VERSION:-}" ]; then EXTRA+=(--minimum-server-version "$MINIMUM_SERVER_VERSION"); fi
-          python3 scripts/generate_native_appcast.py "${EXTRA[@]}" --tag "$TAG" --platform "$OS" --arch "$ARCH" --package-arch "$PACKAGE_ARCH" --installer "app.$EXT" --signature-file signature.txt --build-version "$BUILD_VERSION" --repository "$REPOSITORY" --output "appcast-$OS-$ARCH.xml"
+          python3 scripts/generate_native_appcast.py "${EXTRA[@]}" --tag "$TAG" --platform "$OS" --arch "$ARCH" --package-arch "$PACKAGE_ARCH" --installer "app.$EXT" --signature-file signature.txt --build-version "$BUILD_VERSION" --repository "$REPOSITORY" --generation "$UPDATER_GENERATION" --output-dir feeds
       - uses: actions/upload-artifact@v4
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
+        if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'native'
         with:
           name: appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
-          path: appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          path: feeds/appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          if-no-files-found: error
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'legacy'
+        with:
+          name: native-appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
+          path: feeds/native-appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
           if-no-files-found: error
           compression-level: 0
 
@@ -189,7 +207,7 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
 
-    if: ${{ github.event.inputs.platform == 'all platforms' || github.event.inputs.platform == 'linux' }}
+    if: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -277,7 +295,8 @@ jobs:
     if: >-
       always() && needs.resolve.result == 'success' &&
       (needs.native.result == 'success' || needs.native.result == 'skipped') &&
-      (needs.linux-x86_64.result == 'success' || needs.linux-x86_64.result == 'skipped')
+      (needs.linux-x86_64.result == 'success' || needs.linux-x86_64.result == 'skipped') &&
+      (needs.native.result == 'success' || needs.linux-x86_64.result == 'success')
 
     steps:
       - uses: actions/checkout@v4

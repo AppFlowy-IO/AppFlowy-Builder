@@ -3,9 +3,31 @@ import pathlib
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
-from generate_native_appcast import generate, SPARKLE
+from generate_native_appcast import generate, write_feeds, SPARKLE
 
 class AppcastTests(unittest.TestCase):
+    def test_each_generation_preserves_legacy_names_and_signed_metadata(self):
+        for platform, arch in [('macos', 'arm64'), ('macos', 'x86_64'), ('windows', 'x86_64')]:
+            for generation in ('legacy', 'native', 'both'):
+                with self.subTest(platform=platform, arch=arch, generation=generation), tempfile.TemporaryDirectory() as directory:
+                    root = pathlib.Path(directory)
+                    installer = root / 'installer'
+                    installer.write_bytes(b'final installer')
+                    payload = generate('0.14.12', platform, arch, installer,
+                        base64.b64encode(b'x' * 64).decode(), '1793000000',
+                        minimum_server_version='0.19.10', critical=True)
+                    files = write_feeds(root / 'feeds', platform, arch, payload, generation)
+                    expected = []
+                    if generation != 'native': expected.append(f'appcast-{platform}-{arch}.xml')
+                    if generation != 'legacy': expected.append(f'native-appcast-{platform}-{arch}.xml')
+                    self.assertEqual([p.name for p in files], expected)
+                    for path in files:
+                        self.assertEqual(path.read_bytes(), payload)
+                        item = ET.fromstring(path.read_bytes()).find('channel/item')
+                        self.assertEqual(item.find(f'{{{SPARKLE}}}shortVersionString').text, '0.14.12')
+                        self.assertEqual(item.find(f'{{{SPARKLE}}}criticalUpdate').text, 'true')
+                        self.assertEqual(item.find('minServerVersion').text, '0.19.10')
+
     def test_apple_silicon_feed_can_target_universal_installer(self):
         with tempfile.TemporaryDirectory() as directory:
             installer = pathlib.Path(directory) / 'app.dmg'
