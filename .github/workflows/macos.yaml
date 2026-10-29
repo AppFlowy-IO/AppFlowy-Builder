@@ -179,6 +179,15 @@ jobs:
               "$arch" "$MACOS_APP_RELEASE_PATH/$arch/AppFlowy.app"
           done
 
+      - name: Verify macOS update compatibility
+        run: |
+          set -euo pipefail
+          for arch in universal arm64 x86_64; do
+            python .builder/scripts/verify_native_update.py macos-bundle \
+              --bundle "$MACOS_APP_RELEASE_PATH/$arch/AppFlowy.app" \
+              --version "$BUILD_VERSION"
+          done
+
       - name: Codesign AppFlowy
         run: |
           if [ -z "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" ]; then

@@ -72,11 +72,18 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Checkout packaging tools
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: .builder
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -112,13 +119,11 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: x86_64-pc-windows-msvc
-          override: true
+          targets: x86_64-pc-windows-msvc
           components: rustfmt
-          profile: minimal
 
       - uses: davidB/rust-cargo-make@v1
         with:
@@ -189,6 +194,14 @@ jobs:
           Copy-Item "C:\Windows\System32\msvcp140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"
           Copy-Item "C:\Windows\System32\vcruntime140.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"
           Copy-Item "C:\Windows\System32\vcruntime140_1.dll" "${{ env.WINDOWS_APP_RELEASE_PATH }}\AppFlowy\"
+
+      - name: Verify Windows update compatibility
+        run: |
+          python -m pip install -r .builder/scripts/requirements-update-validation.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .builder/scripts/verify_native_update.py windows-bundle `
+            --executable "$env:WINDOWS_APP_RELEASE_PATH\AppFlowy\AppFlowy.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Archive Asset
         uses: vimtor/action-zip@v1
