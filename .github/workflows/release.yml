@@ -1,5 +1,5 @@
 name: Build AppFlowy Application
-run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.14.10' }} - ${{ github.event.inputs.internal_build || '1' }}
+run-name: Build ${{ github.event.inputs.branch || 'main' }}/${{ github.event.inputs.version || '0.14.11' }} - ${{ github.event.inputs.internal_build || '1' }}
 
 on:
   workflow_dispatch:
