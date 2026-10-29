@@ -72,7 +72,7 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
@@ -119,13 +119,11 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: x86_64-pc-windows-msvc
-          override: true
+          targets: x86_64-pc-windows-msvc
           components: rustfmt
-          profile: minimal
 
       - uses: davidB/rust-cargo-make@v1
         with:
