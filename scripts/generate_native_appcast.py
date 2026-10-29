@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Generate one version-pinned appcast from the final signed installer metadata."""
 import argparse
-import base64
 import datetime
 import pathlib
 import re
 import xml.etree.ElementTree as ET
 
+from verify_native_update import verify_installer_signature
+
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 ET.register_namespace("sparkle", SPARKLE)
 
 
-def generate(tag, platform, arch, installer, signature, build_version, repository="AppFlowy-IO/AppFlowy", minimum_server_version=None, critical=False, package_arch=None):
+def generate(tag, platform, arch, installer, signature, build_version, repository="AppFlowy-IO/AppFlowy", minimum_server_version=None, critical=False, package_arch=None, *, public_key=None):
     version = tag.removeprefix("v")
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("A stable release tag is required")
@@ -25,9 +26,7 @@ def generate(tag, platform, arch, installer, signature, build_version, repositor
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repository):
         raise ValueError("Invalid repository")
     signature = signature.strip()
-    decoded = base64.b64decode(signature, validate=True)
-    if not decoded or (platform == "macos" and len(decoded) != 64):
-        raise ValueError("Missing or malformed installer signature")
+    verify_installer_signature(platform, installer, signature, public_key)
     size = installer.stat().st_size
     if size <= 0:
         raise ValueError("Empty installer")
