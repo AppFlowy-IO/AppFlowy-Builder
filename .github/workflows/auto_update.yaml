@@ -92,7 +92,7 @@ jobs:
           gh api "repos/$REPOSITORY/releases/tags/$TAG" > release.json
           python3 - "$TAG" <<'PYCODE'
           import json, os, re, sys
-          release = json.load(open('release.json'))
+          release = json.load(open('release.json', encoding='utf-8'))
           tag = sys.argv[1]
           version = tag.removeprefix('v')
           assert re.fullmatch(r'\d+\.\d+\.\d+', version), 'Stable release required'
@@ -116,7 +116,7 @@ jobs:
           gh release download "$TAG" --repo "$REPOSITORY" --pattern "$ASSET" --output "app.$EXT"
           python3 - "$ASSET" "app.$EXT" <<'PYCODE'
           import json, pathlib, sys
-          assets = [a for a in json.load(open('release.json'))['assets'] if a['name'] == sys.argv[1]]
+          assets = [a for a in json.load(open('release.json', encoding='utf-8'))['assets'] if a['name'] == sys.argv[1]]
           assert len(assets) == 1 and assets[0]['size'] == pathlib.Path(sys.argv[2]).stat().st_size > 0
           PYCODE
       - name: Sign macOS installer and read its actual build version
@@ -160,11 +160,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if python3 -c 'import json,sys; sys.exit(not any(a["name"] == "desktop-update.json" for a in json.load(open("release.json"))["assets"]))'; then
+          if python3 -c 'import json,sys; sys.exit(not any(a["name"] == "desktop-update.json" for a in json.load(open("release.json", encoding="utf-8"))["assets"]))'; then
             gh release download "$TAG" --repo "$REPOSITORY" --pattern desktop-update.json --output desktop-update.json
             python3 - <<'PYCODE'
           import json, os, re
-          metadata = json.load(open('desktop-update.json'))
+          metadata = json.load(open('desktop-update.json', encoding='utf-8'))
           assert metadata['version'].removeprefix('v') == os.environ['VERSION']
           floor = metadata['minimum_server_version']
           assert re.fullmatch(r'\d+\.\d+\.\d+', floor)
