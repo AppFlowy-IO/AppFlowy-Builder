@@ -15,17 +15,24 @@ import yaml
 class FeedShellTests(unittest.TestCase):
     def test_feed_generation_handles_absent_and_present_optional_metadata(self):
         workflow = Path(__file__).resolve().parents[1] / ".github/workflows/auto_update.yaml"
-        steps = yaml.safe_load(workflow.read_text())["jobs"]["native"]["steps"]
+        steps = yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]["native"]["steps"]
         script = next(step["run"] for step in steps if step.get("name") == "Generate legacy and native appcasts")
         # The macOS system shell reproduces the empty-array/nounset failure;
         # Homebrew's newer bash would hide that compatibility regression.
         bash = "/bin/bash" if sys.platform == "darwin" else shutil.which("bash")
+        if sys.platform == "win32":
+            # Use the same Git Bash as Actions, even when WSL's bash.exe occurs
+            # earlier on PATH. No WSL distribution is needed for this check.
+            git = shutil.which("git")
+            self.assertIsNotNone(git)
+            bash = str(Path(git).resolve().parents[1] / "bin/bash.exe")
+            self.assertTrue(Path(bash).is_file())
         self.assertIsNotNone(bash)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "scripts").mkdir()
             (root / "scripts/generate_native_appcast.py").write_text(
-                "import json, sys\nprint(json.dumps(sys.argv[1:]))\n"
+                "import json, sys\nprint(json.dumps(sys.argv[1:]))\n", encoding="utf-8"
             )
             for critical, floor in [("false", ""), ("true", "0.19.10")]:
                 with self.subTest(critical=critical, minimum_server_version=floor):
