@@ -246,10 +246,14 @@ jobs:
         run: |
           set -euo pipefail
           EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
-          EXTRA=()
-          if [ "$CRITICAL" = true ]; then EXTRA+=(--critical); fi
-          if [ -n "${MINIMUM_SERVER_VERSION:-}" ]; then EXTRA+=(--minimum-server-version "$MINIMUM_SERVER_VERSION"); fi
-          python3 scripts/generate_native_appcast.py "${EXTRA[@]}" --tag "$TAG" --platform "$OS" --arch "$ARCH" --package-arch "$PACKAGE_ARCH" --installer "app.$EXT" --signature-file signature.txt --build-version "$BUILD_VERSION" --repository "$REPOSITORY" --generation "$UPDATER_GENERATION" --output-dir feeds
+          # Bash 3.2 treats an empty array as unset under nounset. Start with the
+          # required arguments so ordinary releases need no optional metadata.
+          ARGS=(--tag "$TAG" --platform "$OS" --arch "$ARCH" --package-arch "$PACKAGE_ARCH"
+            --installer "app.$EXT" --signature-file signature.txt --build-version "$BUILD_VERSION"
+            --repository "$REPOSITORY" --generation "$UPDATER_GENERATION" --output-dir feeds)
+          if [ "$CRITICAL" = true ]; then ARGS+=(--critical); fi
+          if [ -n "${MINIMUM_SERVER_VERSION:-}" ]; then ARGS+=(--minimum-server-version "$MINIMUM_SERVER_VERSION"); fi
+          python3 scripts/generate_native_appcast.py "${ARGS[@]}"
       - uses: actions/upload-artifact@v4
         if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'native'
         with:
