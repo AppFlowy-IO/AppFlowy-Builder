@@ -27,7 +27,8 @@ jobs:
         include:
           - { platform: macos-arm64, runner: macos-15 }
           - { platform: macos-x86_64, runner: macos-15-intel }
-          - { platform: windows-x86_64, runner: windows-2025 }
+          - { platform: windows-x86_64, runner: windows-2025, winsparkle: '0.9.4' }
+          - { platform: windows-x86_64-legacy, runner: windows-2025, winsparkle: '0.8.1' }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +46,7 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
       - name: Test native update lifecycle
-        run: python scripts/update_e2e/run.py --output update-e2e
+        run: python scripts/update_e2e/run.py --output update-e2e --winsparkle-version '${{ matrix.winsparkle || '0.9.4' }}'
       - name: Upload native update evidence
         if: always()
         uses: actions/upload-artifact@v4

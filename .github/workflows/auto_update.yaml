@@ -200,12 +200,22 @@ jobs:
           python scripts/update_e2e/run.py --output update-e2e \
             --installer "app.$EXT" --signature-file signature.txt \
             --version "$VERSION" --build-version "$BUILD_VERSION"
+      - name: Test signed installer through the legacy Windows updater
+        if: matrix.os == 'windows' && (inputs.platform == 'all platforms' || inputs.platform == 'windows')
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/update_e2e/run.py --output update-e2e-legacy --winsparkle-version 0.8.1 \
+            --installer app.exe --signature-file signature.txt \
+            --version "$VERSION" --build-version "$BUILD_VERSION"
       - name: Upload native update evidence
         if: always() && (inputs.platform == 'all platforms' || inputs.platform == matrix.os)
         uses: actions/upload-artifact@v4
         with:
           name: release-update-e2e-${{ matrix.os }}-${{ matrix.arch }}
-          path: update-e2e/reports/
+          path: |
+            update-e2e/reports/
+            update-e2e-legacy/reports/
           if-no-files-found: warn
           retention-days: 14
       - name: Read release compatibility manifest

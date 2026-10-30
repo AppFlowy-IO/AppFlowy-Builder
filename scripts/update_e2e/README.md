@@ -5,7 +5,10 @@ The matrix covers macOS ARM64, macOS Intel and Windows x64 on disposable GitHub
 hosted runners. No release secrets are available to the pull request tests.
 
 The controller builds small native hosts using Sparkle 2.8.1 and WinSparkle
-0.9.4, the versions used by Desktop. Dependency downloads are checksum pinned.
+0.8.1 / 0.9.4. Sparkle 2.8.1 is shipped in macOS 0.14.7; WinSparkle 0.8.1's DLL
+exactly matches the one shipped in Windows 0.14.7, and 0.9.4 is used by the new
+Desktop plugin. Both Windows engines run all Windows cases and the final release
+installer gate. Dependency downloads are checksum pinned.
 It generates temporary signing keys, serves a feed on loopback, and observes
 the real updater replacing the host through a DMG or an Inno Setup installer.
 The controller remains alive across app termination and restart.

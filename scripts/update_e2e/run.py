@@ -51,13 +51,17 @@ def sha256(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def dependencies(root):
+def dependencies(root, winsparkle_version):
     if PLATFORM == "macos":
         url = "https://github.com/sparkle-project/Sparkle/releases/download/2.8.1/Sparkle-2.8.1.tar.xz"
         digest = "5cddb7695674ef7704268f38eccaee80e3accbf19e61c1689efff5b6116d85be"
     else:
-        url = "https://github.com/vslavik/winsparkle/releases/download/v0.9.4/WinSparkle-0.9.4.zip"
-        digest = "6037df37fc263bd1650a1c4949681a9d40ffe991d01f35892a406cb5d103c976"
+        url = f"https://github.com/vslavik/winsparkle/releases/download/v{winsparkle_version}/WinSparkle-{winsparkle_version}.zip"
+        digest = {
+            # 0.8.1's x64 DLL exactly matches the one shipped in AppFlowy 0.14.7.
+            "0.8.1": "491612b0e817373ffcde03ad0d923f1e1885a231316e9e9c257e57b4e9dab4c5",
+            "0.9.4": "6037df37fc263bd1650a1c4949681a9d40ffe991d01f35892a406cb5d103c976",
+        }[winsparkle_version]
     archive = root / url.rsplit("/", 1)[1]
     request = urllib.request.Request(url, headers={"User-Agent": "AppFlowy-update-e2e"})
     with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as dest:
@@ -272,7 +276,8 @@ def exercise(root, deps, scenario, args):
     (case / "data.txt").write_text(marker)
     (case / "target-version.txt").write_text(version)
     (case / "config.json").write_text(json.dumps({"version": version, "scenario": scenario}))
-    summary = {"scenario": scenario, "platform": PLATFORM, "target_version": version}
+    summary = {"scenario": scenario, "platform": PLATFORM, "target_version": version,
+               "engine": "Sparkle 2.8.1" if PLATFORM == "macos" else f"WinSparkle {args.winsparkle_version}"}
     try:
         with server(case) as base:
             feed = f"{base}/appcast.xml"
@@ -370,6 +375,7 @@ def main():
     parser.add_argument("--signature-file", type=Path)
     parser.add_argument("--version")
     parser.add_argument("--build-version")
+    parser.add_argument("--winsparkle-version", choices=("0.8.1", "0.9.4"), default="0.9.4")
     args = parser.parse_args()
     if sys.platform not in ("darwin", "win32"):
         parser.error("Run on macOS or Windows")
@@ -388,7 +394,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     work = output / "work"
     work.mkdir()
-    deps = dependencies(work)
+    deps = dependencies(work, args.winsparkle_version)
     scenarios = ["candidate"] if args.installer else [args.scenario] if args.scenario else ["success", "bad-signature"] + (["missing-key", "skip"] if PLATFORM == "macos" else ["single-hash"])
     results = []
     for scenario in scenarios:
