@@ -7,3 +7,5 @@
 
 .idea/
 .env
+__pycache__/
+/update-e2e/

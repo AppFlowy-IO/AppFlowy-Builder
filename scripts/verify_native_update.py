@@ -116,9 +116,10 @@ def verify_installer_signature(platform, installer, signature, public_key=None):
             verifier = serialization.load_pem_public_key(key)
             if not isinstance(verifier, dsa.DSAPublicKey):
                 raise ValueError("Windows legacy updates require a DSA public key")
-            # Deployed WinSparkle clients verify DSA/SHA1. Switching algorithms
-            # needs a separate client migration; SHA256 here would break them.
-            verifier.verify(decoded, payload, hashes.SHA1())
+            # WinSparkle 0.8.1 and 0.9.4 verify DSA over SHA1(SHA1(installer)).
+            # Match upstream's legacy_sign_update.bat, including the first hash;
+            # signing the raw installer with DSA/SHA1 produces an invalid update.
+            verifier.verify(decoded, hashlib.sha1(payload).digest(), hashes.SHA1())
     except InvalidSignature as error:
         raise ValueError("Installer signature does not match the final bytes and deployed public key") from error
 
