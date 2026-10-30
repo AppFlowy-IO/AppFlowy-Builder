@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -25,7 +26,7 @@ class AppcastTests(unittest.TestCase):
             signature = key.sign(payload)
             public = base64.b64encode(key.public_key().public_bytes_raw())
         else:
-            signature = key.sign(payload, hashes.SHA1())
+            signature = key.sign(hashlib.sha1(payload).digest(), hashes.SHA1())
             public = key.public_key().public_bytes(
                 serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
         return installer, base64.b64encode(signature).decode(), public
@@ -105,6 +106,14 @@ class AppcastTests(unittest.TestCase):
             self.assertEqual(enclosure.get("url"),
                              "https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.14.12/AppFlowy-0.14.12-windows-x86_64.exe")
             self.assertEqual(int(enclosure.get("length")), installer.stat().st_size)
+
+    def test_windows_rejects_the_single_hash_signature_used_by_old_workflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            installer, _, public = self.signed_installer(Path(directory), "windows")
+            invalid = self.keys["windows"].sign(installer.read_bytes(), hashes.SHA1())
+            with self.assertRaisesRegex(ValueError, "signature"):
+                generate("0.14.12", "windows", "x86_64", installer,
+                         base64.b64encode(invalid).decode(), "0.14.12", public_key=public)
 
     def test_final_installer_size_build_and_signature_are_preserved(self):
         with tempfile.TemporaryDirectory() as directory:

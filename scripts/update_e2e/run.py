@@ -83,7 +83,7 @@ def public_key(private):
 
 def sign(private, path):
     data = path.read_bytes()
-    signature = private.sign(data) if PLATFORM == "macos" else private.sign(data, hashes.SHA1())
+    signature = private.sign(data) if PLATFORM == "macos" else private.sign(hashlib.sha1(data).digest(), hashes.SHA1())
     return base64.b64encode(signature).decode()
 
 
@@ -293,10 +293,12 @@ def exercise(root, deps, scenario, args):
             if scenario == "bad-signature":
                 wrong = ed25519.Ed25519PrivateKey.generate() if PLATFORM == "macos" else dsa.generate_private_key(1024)
                 signature = sign(wrong, installer)
+            elif scenario == "single-hash":
+                signature = base64.b64encode(private.sign(installer.read_bytes(), hashes.SHA1())).decode()
             feed_xml(case, base, installer, signature, version, args.build_version or version)
             with (case / "console.log").open("wb") as console:
                 process = subprocess.Popen([str(executable(host))], stdout=console, stderr=subprocess.STDOUT)
-                expected = "skipped" if scenario == "skip" else "error" if scenario in ("bad-signature", "missing-key") else "terminated" if candidate else "relaunched"
+                expected = "skipped" if scenario == "skip" else "error" if scenario in ("bad-signature", "missing-key", "single-hash") else "terminated" if candidate else "relaunched"
 
                 def completed():
                     events = records(case / "events.jsonl")
@@ -363,7 +365,7 @@ def exercise(root, deps, scenario, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New, empty directory for this run")
-    parser.add_argument("--scenario", choices=("success", "bad-signature", "missing-key", "skip"))
+    parser.add_argument("--scenario", choices=("success", "bad-signature", "missing-key", "skip", "single-hash"))
     parser.add_argument("--installer", type=Path, help="Final signed release installer (CI only)")
     parser.add_argument("--signature-file", type=Path)
     parser.add_argument("--version")
@@ -380,12 +382,14 @@ def main():
         parser.error("Release metadata requires --installer")
     if args.scenario in ("missing-key", "skip") and PLATFORM != "macos":
         parser.error("This scenario is macOS-only")
+    if args.scenario == "single-hash" and PLATFORM != "windows":
+        parser.error("This scenario is Windows-only")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     work = output / "work"
     work.mkdir()
     deps = dependencies(work)
-    scenarios = ["candidate"] if args.installer else [args.scenario] if args.scenario else ["success", "bad-signature"] + (["missing-key", "skip"] if PLATFORM == "macos" else [])
+    scenarios = ["candidate"] if args.installer else [args.scenario] if args.scenario else ["success", "bad-signature"] + (["missing-key", "skip"] if PLATFORM == "macos" else ["single-hash"])
     results = []
     for scenario in scenarios:
         print(f"Running {PLATFORM}: {scenario}", flush=True)

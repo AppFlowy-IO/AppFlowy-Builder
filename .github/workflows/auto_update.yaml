@@ -182,7 +182,9 @@ jobs:
           umask 077
           trap 'rm -f update-key.pem signature.bin' EXIT
           printf '%s' "$UPDATE_PRIVATE_KEY" > update-key.pem
-          openssl dgst -sha1 -sign update-key.pem -out signature.bin app.exe
+          # WinSparkle's legacy protocol signs SHA1(installer) using DSA/SHA1:
+          # https://github.com/vslavik/winsparkle/blob/v0.9.4/bin/legacy_sign_update.bat
+          openssl dgst -sha1 -binary app.exe | openssl dgst -sha1 -sign update-key.pem -out signature.bin
           openssl base64 -A -in signature.bin > signature.txt
           python3 scripts/verify_native_update.py signature \
             --platform windows --installer app.exe --signature-file signature.txt

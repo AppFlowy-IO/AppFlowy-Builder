@@ -14,6 +14,7 @@ The controller remains alive across app termination and restart.
 | --- | --- | --- | --- |
 | Valid update | ARM64 + Intel | x64 | Final executable matches the target, old process exits, new process reads pre-update data |
 | Wrong signing key | ARM64 + Intel | x64 | Native engine rejects download, installer never runs, old executable remains |
+| Single SHA1 instead of legacy double SHA1 | — | x64 | WinSparkle rejects the signature produced by the previous signing workflow |
 | Target removes update key | ARM64 + Intel | — | Sparkle returns signature/validation error despite a valid archive signature |
 | Skip update | ARM64 + Intel | — | No installer download and no executable change |
 

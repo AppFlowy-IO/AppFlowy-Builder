@@ -15,9 +15,12 @@ the key when replacing or removing the updater implementation. The published
 0.14.11 macOS apps omitted it; Desktop PR #1533 restores it for subsequent builds.
 Changing XML or signing the existing DMG again cannot repair that bundle.
 
-Windows 0.14.7 verifies DSA/SHA1 installer signatures. WinSparkle 0.9.4 still
-supports these signatures, so the legacy and native feeds currently share the
-same signature algorithm. Authenticode signing must finish before update signing.
+Windows 0.14.7 verifies DSA over **SHA1(SHA1(installer))**, as does WinSparkle
+0.9.4. Follow upstream's [legacy signing script](https://github.com/vslavik/winsparkle/blob/v0.9.4/bin/legacy_sign_update.bat):
+hash the installer to binary SHA1 first, then sign that digest using DSA/SHA1.
+A single SHA1 signature passes ordinary DSA verification but fails in the native
+updater. Legacy and native feeds share this protocol. Authenticode signing must
+finish before update signing.
 
 The build workflows check the actual macOS bundles and the compiled Windows
 key resource before packaging; Windows resources are loaded as data without
