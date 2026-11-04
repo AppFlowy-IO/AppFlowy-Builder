@@ -223,6 +223,23 @@ jobs:
         run: |
           iscc /F${{ env.WINDOWS_INSTALLER_NAME }} inno_setup_config.iss /DAppVersion=${{ inputs.build_name }}
 
+      - name: Verify packaged Windows PDFs
+        run: |
+          python .builder/scripts/verify_windows_pdf.py release `
+            --zip "$env:WINDOWS_APP_RELEASE_PATH\$env:WINDOWS_ZIP_NAME" `
+            --installer "$env:WINDOWS_APP_RELEASE_PATH\Output\$env:WINDOWS_INSTALLER_NAME.exe" `
+            --output "$env:RUNNER_TEMP\windows-pdf-release"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve Windows PDF validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-pdf-release-smoke
+          path: ${{ runner.temp }}/windows-pdf-release
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
