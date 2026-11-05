@@ -128,6 +128,28 @@ python3 frontend/scripts/tool/generate_desktop_update_manifest.py \
   --version 0.14.9 --output desktop-update.json
 ```
 
+### Windows PDF release gate
+
+Before uploading either Windows package, the Windows build job extracts the
+final ZIP and silently installs the generated Inno Setup EXE into a temporary
+directory on its disposable runner. It checks that both payloads declare and
+contain an x64 `pdfium.dll` beside `AppFlowy.exe`, then loads each payload's
+own DLL in a separate process and renders a known PDF. The check compares
+black and white pixels and requires identical application/PDFium hashes across
+the ZIP and installed payload. Missing DLLs, load errors, crashes, timeouts,
+and incorrect pixels stop both package uploads.
+
+The `windows-pdf-release-smoke` artifact retains package hashes, probe logs,
+the installer log, and rendered PNGs. This validates native PDF packaging and
+rendering; release validation still needs an inline PDF check in the actual
+AppFlowy UI. The script never launches AppFlowy or changes an existing account.
+Run it only on a disposable Windows runner because the installer executes.
+
+The `Test Windows PDF release gate` workflow validates the gate with real
+PDFium and small Inno Setup fixtures, including a missing DLL in each package
+and a DLL that lacks PDFium's exports. Unit tests run with
+`python -m unittest discover -s scripts -p test_verify_windows_pdf.py -v`.
+
 ## How to use
 
 > [!CAUTION]
