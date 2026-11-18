@@ -233,15 +233,23 @@ jobs:
           if [ "$CRITICAL" = true ]; then ARGS+=(--critical); fi
           if [ -n "${MINIMUM_SERVER_VERSION:-}" ]; then ARGS+=(--minimum-server-version "$MINIMUM_SERVER_VERSION"); fi
           python3 scripts/generate_native_appcast.py "${ARGS[@]}"
-      - name: Test signed installer through the native updater
+      - name: Install the previous signed release on this runner
+        env:
+          SOURCE_TAG: ${{ needs.resolve.outputs.source }}
+          TARGET_TAG: ${{ needs.resolve.outputs.tag }}
+          ARCH: ${{ matrix.arch }}
+        run: python scripts/update_e2e/install_previous.py
+      - name: Upgrade the previous release with the staged feed
         shell: bash
         env:
           OS: ${{ matrix.os }}
+          SOURCE_TAG: ${{ needs.resolve.outputs.source }}
         run: |
           set -euo pipefail
           EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
           FEEDS=(feeds/*appcast-*.xml)
           python scripts/update_e2e/run.py --output update-e2e --appcast "${FEEDS[0]}" \
+            --previous-app "$APP_PATH" --source-version "${SOURCE_TAG#v}" \
             --installer "app.$EXT" --signature-file signature.txt \
             --version "$VERSION" --build-version "$BUILD_VERSION"
       - name: Test signed installer through the legacy Windows updater
@@ -375,7 +383,7 @@ jobs:
     needs: [resolve, delivery]
     if: >-
       always() && !cancelled() && needs.delivery.result == 'success' &&
-      !inputs.testOnly && needs.resolve.outputs.source != ''
+      !inputs.testOnly && inputs.updaterGeneration != 'legacy' && needs.resolve.outputs.source != ''
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}

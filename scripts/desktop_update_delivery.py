@@ -144,9 +144,10 @@ def resolve(args):
         if any(name.startswith("native-") for name, _, _ in selected(args.platform, args.generation)):
             if args.repository.lower() != "appflowy-io/appflowy":
                 raise ValueError("The released native client uses the official AppFlowy repository. Use testOnly for a different repository.")
-            tags = gh("api", "--paginate", f"{location}?per_page=100", "--jq",
-                      ".[] | select(.draft == false and .prerelease == false) | .tag_name")
-            source = previous_tag(tags.decode().splitlines(), tag)
+    if args.platform != "linux" and (args.mode != "verify" or args.generation != "legacy"):
+        tags = gh("api", "--paginate", f"{location}?per_page=100", "--jq",
+                  ".[] | select(.draft == false and .prerelease == false) | .tag_name")
+        source = previous_tag(tags.decode().splitlines(), tag)
     matrix = {"include": [
         {"os": system, "arch": arch, "runner": RUNNERS[system, arch],
          "package_arch": "universal" if (system, arch) == ("macos", "arm64") else arch}
@@ -176,7 +177,7 @@ def digest(payload):
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def check_tested_installer(evidence, release, repo, system, arch):
+def check_tested_installer(evidence, release, repo, system, arch, source):
     version = release["tag_name"].removeprefix("v")
     name = installer_name(version, system, arch)
     asset = release_asset(release, name)
@@ -188,6 +189,8 @@ def check_tested_installer(evidence, release, repo, system, arch):
         if (report["scenario"] != "candidate" or report["status"] != "passed" or report["platform"] != system
                 or report["target_version"] != version or "sha256:" + report["installer_sha256"] != expected):
             raise ValueError(f"{name} differs from the installer that passed {suite}")
+        if suite == "update-e2e" and (not source or report.get("source_version") != source.removeprefix("v")):
+            raise ValueError(f"{name} has no passing upgrade from {source}")
 
 
 def deliver(args):
@@ -211,7 +214,7 @@ def deliver(args):
             inspect_feed(payload, release, args.repository, system, arch)
             staged[name] = digest(payload)
         for system, arch in sorted({(s, a) for _, s, a in targets if s != "linux"}):
-            check_tested_installer(args.evidence, release, args.repository, system, arch)
+            check_tested_installer(args.evidence, release, args.repository, system, arch, args.source)
             legacy = f"appcast-{system}-{arch}.xml"
             native = f"native-{legacy}"
             if legacy in staged and native in staged and staged[legacy] != staged[native]:

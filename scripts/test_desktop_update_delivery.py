@@ -42,7 +42,7 @@ class DeliveryTests(unittest.TestCase):
             directory = self.args.evidence / "release-update-e2e-windows-x86_64" / suite / "reports/candidate"
             directory.mkdir(parents=True)
             (directory / "result.json").write_text(json.dumps(dict(scenario="candidate", platform="windows",
-                status="passed", target_version=TAG, installer_sha256="1" * 64)))
+                status="passed", source_version="0.15.0", target_version=TAG, installer_sha256="1" * 64)))
         for name in FEEDS:
             (self.args.feeds / name).write_bytes(XML)
 
