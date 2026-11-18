@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   install:
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -16,10 +16,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(uname -m)" = arm64
+          test "$(uname -m)" = x86_64
           mkdir -p evidence
-          curl -fsSL --retry 2 -o "$RUNNER_TEMP/AppFlowy.dmg" https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.15.0/AppFlowy-0.15.0-macos-arm64.dmg
-          echo "f431bf8fb995cb9b8fb2dd7701ace55707793ef8ae9a8024e820802ad5fe8ef0  $RUNNER_TEMP/AppFlowy.dmg" | shasum -a 256 -c -
+          curl -fsSL --retry 2 -o "$RUNNER_TEMP/AppFlowy.dmg" https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.15.0/AppFlowy-0.15.0-macos-x86_64.dmg
+          echo "2cde0acb0d477f62d5f9d4eea3dde03cfa3e3df69546cd19b618e54ab95c2435  $RUNNER_TEMP/AppFlowy.dmg" | shasum -a 256 -c -
           mount="$RUNNER_TEMP/appflowy-dmg"
           mkdir "$mount"
           hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$RUNNER_TEMP/AppFlowy.dmg"
@@ -28,10 +28,26 @@ jobs:
           ditto "$mount/AppFlowy.app" /Applications/AppFlowy.app
           codesign --verify --deep --strict /Applications/AppFlowy.app
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/AppFlowy.app/Contents/Info.plist)" = 0.15.0
-          curl -fsSL 'https://beta.appflowy.cloud/api/desktop-update?os=macos&arch=aarch64&current_version=0.15.0' > evidence/discovery.json
-          jq -e '.data.auto_update_enabled and .data.latest_version == "0.15.1" and .data.appcast_url == "https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.15.1/native-appcast-macos-arm64.xml"' evidence/discovery.json
+          curl -fsSL 'https://beta.appflowy.cloud/api/desktop-update?os=macos&arch=x86_64&current_version=0.15.0' > evidence/discovery.json
+          jq -e '.data.auto_update_enabled and .data.latest_version == "0.15.1" and .data.appcast_url == "https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.15.1/native-appcast-macos-x86_64.xml"' evidence/discovery.json
       - name: Update from the released app and observe the relaunch
-        run: python3 -u .github/test-installed-update/exercise.py /Applications/AppFlowy.app evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python3 -u .github/test-installed-update/exercise.py /Applications/AppFlowy.app evidence; then
+            exit 0
+          fi
+          if ! jq -e '.canPostEvents == false' evidence/initial-apps.json >/dev/null; then
+            exit 1
+          fi
+          cd .github/test-installed-update/xctest
+          ruby project.rb
+          TEST_RUNNER_HOSTED_UPGRADE_TEST=1 TEST_RUNNER_RELEASED_APP_PATH=/Applications/AppFlowy.app \
+            xcodebuild test -project UpgradeValidation.xcodeproj -scheme ReleasedUpgradeUITests \
+            -destination 'platform=macOS,arch=x86_64' -parallel-testing-enabled NO \
+            -resultBundlePath "$GITHUB_WORKSPACE/evidence/upgrade.xcresult"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/AppFlowy.app/Contents/Info.plist)" = 0.15.1
+          codesign --verify --strict --deep /Applications/AppFlowy.app
       - name: Collect screenshots and app lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -42,4 +58,5 @@ jobs:
             evidence/*.jsonl
             evidence/*.png
             evidence/*.txt
+            evidence/upgrade.xcresult
           retention-days: 7
