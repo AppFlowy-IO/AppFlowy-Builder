@@ -246,6 +246,7 @@ jobs:
         with:
           name: release-update-e2e-${{ matrix.os }}-${{ matrix.arch }}
           path: |
+            evidence/previous-release.json
             update-e2e/reports/
             update-e2e-legacy/reports/
           if-no-files-found: warn

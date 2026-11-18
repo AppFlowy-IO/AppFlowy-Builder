@@ -171,7 +171,7 @@ def digest(payload):
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def check_tested_installer(evidence, release, repo, system, arch, source):
+def check_tested_installer(evidence, release, repo, system, arch, source, feed_digest):
     version = release["tag_name"].removeprefix("v")
     name = installer_name(version, system, arch)
     asset = release_asset(release, name)
@@ -185,6 +185,8 @@ def check_tested_installer(evidence, release, repo, system, arch, source):
             raise ValueError(f"{name} differs from the installer that passed {suite}")
         if suite == "update-e2e" and (not source or report.get("source_version") != source.removeprefix("v")):
             raise ValueError(f"{name} has no passing upgrade from {source}")
+        if "sha256:" + report["feed_sha256"] != feed_digest:
+            raise ValueError(f"The staged {system}/{arch} XML differs from the feed tested by {suite}")
     return expected
 
 
@@ -201,12 +203,13 @@ def stage(args):
         hashes[name] = digest(payload)
     installers = {}
     for system, arch in sorted({(s, a) for _, s, a in targets if s != "linux"}):
-        name = installer_name(args.tag.removeprefix("v"), system, arch)
-        installers[name] = check_tested_installer(args.evidence, release, args.repository, system, arch, args.source)
         legacy = f"appcast-{system}-{arch}.xml"
         native = f"native-{legacy}"
         if legacy in hashes and native in hashes and hashes[legacy] != hashes[native]:
             raise ValueError(f"The two {system}/{arch} feeds differ from the payload exercised by the updater")
+        name = installer_name(args.tag.removeprefix("v"), system, arch)
+        installers[name] = check_tested_installer(args.evidence, release, args.repository, system, arch,
+                                                  args.source, hashes[legacy] if legacy in hashes else hashes[native])
     receipt = dict(repository=args.repository, tag=args.tag, release_id=release["id"], source=args.source,
                    platform=args.platform, generation=args.generation, feeds=hashes, installers=installers,
                    run_id=os.environ["GITHUB_RUN_ID"], attempt=os.environ["GITHUB_RUN_ATTEMPT"])

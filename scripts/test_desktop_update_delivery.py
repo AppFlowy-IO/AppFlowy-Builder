@@ -44,7 +44,8 @@ class DeliveryTests(unittest.TestCase):
             directory = self.args.evidence / "release-update-e2e-windows-x86_64" / suite / "reports/candidate"
             directory.mkdir(parents=True)
             (directory / "result.json").write_text(json.dumps(dict(scenario="candidate", platform="windows",
-                status="passed", source_version="0.15.0", target_version=TAG, installer_sha256="1" * 64)))
+                status="passed", source_version="0.15.0", target_version=TAG, installer_sha256="1" * 64,
+                feed_sha256=delivery.digest(XML).removeprefix("sha256:"))))
         for name in FEEDS:
             (self.args.feeds / name).write_bytes(XML)
 
@@ -115,6 +116,12 @@ class DeliveryTests(unittest.TestCase):
     def test_installer_replaced_after_signing_blocks_staging(self):
         self.release["assets"][0]["digest"] = "sha256:" + "2" * 64
         with self.assertRaisesRegex(ValueError, "differs from the installer"):
+            self.stage()
+
+    def test_feeds_changed_after_the_native_test_block_staging(self):
+        for name in FEEDS:
+            (self.args.feeds / name).write_bytes(XML.replace(b'="signed"', b'="different"'))
+        with self.assertRaisesRegex(ValueError, "differs from the feed tested"):
             self.stage()
 
     def test_fixture_only_cannot_satisfy_the_previous_version_gate(self):

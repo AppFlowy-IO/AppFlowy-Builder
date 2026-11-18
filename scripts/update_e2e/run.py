@@ -279,10 +279,11 @@ def exercise_previous(work, deps, args):
                   target_version=args.version, source_path=str(host))
     try:
         installer = case / ("update.dmg" if PLATFORM == "macos" else "update.exe")
-        os.link(args.installer, installer)
+        shutil.copy2(args.installer, installer)
         signature = args.signature_file.read_text().strip()
         verify_installer_signature(PLATFORM, installer, signature)
         result["installer_sha256"] = sha256(installer)
+        result["feed_sha256"] = sha256(args.appcast)
         before = sha256(executable(host))
         with server(case) as base, (report / "console.log").open("wb") as log:
             feed = f"{base}/appcast.xml"
@@ -364,6 +365,8 @@ def exercise(root, deps, scenario, args):
                 installer = package_fixture(case, target, version)
                 signature = sign(private, installer)
             summary["installer_sha256"] = sha256(installer)
+            if args.appcast:
+                summary["feed_sha256"] = sha256(args.appcast)
             if scenario == "bad-signature":
                 wrong = ed25519.Ed25519PrivateKey.generate() if PLATFORM == "macos" else dsa.generate_private_key(1024)
                 signature = sign(wrong, installer)
