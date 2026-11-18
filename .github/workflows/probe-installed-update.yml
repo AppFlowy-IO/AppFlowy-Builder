@@ -34,20 +34,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if python3 -u .github/test-installed-update/exercise.py /Applications/AppFlowy.app evidence; then
-            exit 0
-          fi
-          if ! jq -e '.canPostEvents == false' evidence/initial-apps.json >/dev/null; then
-            exit 1
-          fi
+          swift -e 'import Metal; print("Default Metal device:", MTLCreateSystemDefaultDevice()?.name ?? "none")' | tee evidence/graphics.txt
           cd .github/test-installed-update/xctest
-          ruby project.rb
           TEST_RUNNER_HOSTED_UPGRADE_TEST=1 TEST_RUNNER_RELEASED_APP_PATH=/Applications/AppFlowy.app \
             xcodebuild test -project UpgradeValidation.xcodeproj -scheme ReleasedUpgradeUITests \
             -destination 'platform=macOS,arch=x86_64' -parallel-testing-enabled NO \
             -resultBundlePath "$GITHUB_WORKSPACE/evidence/upgrade.xcresult"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/AppFlowy.app/Contents/Info.plist)" = 0.15.1
           codesign --verify --strict --deep /Applications/AppFlowy.app
+      - name: Collect app startup diagnostics
+        if: always()
+        shell: bash
+        run: |
+          /usr/bin/log show --last 15m --style compact --predicate 'process == "AppFlowy" OR process == "AppFlowy Helper"' | tail -400 > evidence/app-startup.txt
+          screencapture -x -m evidence/last-screen.png || true
       - name: Collect screenshots and app lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v4

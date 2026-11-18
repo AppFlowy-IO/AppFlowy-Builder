@@ -1,5 +1,8 @@
 import AppKit
 import XCTest
+import Vision
+
+private struct Hit { let click: () -> Void }
 
 final class ReleasedUpgradeUITests: XCTestCase {
     func testSignedAppUpdate() throws {
@@ -40,6 +43,11 @@ final class ReleasedUpgradeUITests: XCTestCase {
         defer { tokens.forEach(center.removeObserver) }
         let app = XCUIApplication(url: url)
         XCTAssertEqual(try version(), "0.15.0")
+        func progress(_ message: String) {
+            print("[upgrade-ui] \(Date()) \(message)")
+            fflush(stdout)
+        }
+        progress("Starting signed 0.15.0 bundle at \(url.path)")
         app.launch()
         let old = try XCTUnwrap(workspace.runningApplications.first { $0.bundleURL?.path == url.path })
         func shot(_ name: String) {
@@ -48,26 +56,64 @@ final class ReleasedUpgradeUITests: XCTestCase {
             proof.lifetime = .keepAlways
             add(proof)
         }
-        func label(_ candidates: [String], wait: TimeInterval) -> XCUIElement? {
+        func snapshot(_ name: String) {
+            progress("\(name). Frontmost: \(workspace.frontmostApplication?.bundleIdentifier ?? "unknown"). App windows: \(app.windows.count)")
+            let tree = app.debugDescription
+            progress(String(tree.prefix(1400)))
+            let proof = XCTAttachment(string: tree)
+            proof.name = name + "-AX"
+            proof.lifetime = .keepAlways
+            add(proof)
+            shot(name)
+        }
+        func fromVisibleWindow(_ candidates: [String]) -> Hit? {
+            let names = Set(candidates.map { $0.lowercased() })
+            for w in app.windows.allElementsBoundByIndex where w.exists && !w.frame.isEmpty {
+                let request = VNRecognizeTextRequest()
+                request.recognitionLanguages = ["en-US"]
+                request.recognitionLevel = .accurate
+                let handler = VNImageRequestHandler(data: w.screenshot().pngRepresentation)
+                guard (try? handler.perform([request])) != nil else { continue }
+                for row in request.results ?? [] {
+                    guard let best = row.topCandidates(1).first,
+                          names.contains(best.string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) else { continue }
+                    let box = row.boundingBox
+                    let point = w.coordinate(withNormalizedOffset: CGVector(dx: box.midX, dy: 1-box.midY))
+                    return Hit { progress("Click visible text \(best.string) in window \(w.title)"); point.click() }
+                }
+            }
+            return nil
+        }
+        func label(_ candidates: [String], wait: TimeInterval) -> Hit? {
+            progress("Waiting up to \(Int(wait))s for \(candidates)")
+            var nextOCR = Date().addingTimeInterval(4)
             let end = Date().addingTimeInterval(wait)
             let visible = app.descendants(matching: .any)
             repeat {
                 for candidate in candidates {
                     let query = visible.matching(NSPredicate(format: "label ==[c] %@ OR title ==[c] %@ OR value ==[c] %@", candidate, candidate, candidate))
                     let found = query.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
-                    if let control = found.last { return control }
+                    if let control = found.last {
+                        return Hit { progress("Click AX \(candidate) \(control.elementType)"); control.click() }
+                    }
+                }
+                if Date() >= nextOCR {
+                    if let hit = fromVisibleWindow(candidates) { return hit }
+                    nextOCR = Date().addingTimeInterval(8)
                 }
                 Thread.sleep(forTimeInterval: 0.8)
             } while Date() < end
+            snapshot("missing-" + candidates.joined(separator: "-"))
             return nil
         }
-        shot("0.15.0-started")
+        snapshot("0.15.0-started")
         if let guest = label(["Anonymous"], wait: 45) {
             guest.click()
         }
         if let banner = label(["Update"], wait: 30) {
             banner.click()
         } else {
+            progress("Opening Settings with Cmd+,")
             app.typeKey(",", modifierFlags: [.command])
             let check = try XCTUnwrap(label(["Check for updates"], wait: 15), "Settings did not display Check for updates.\n\(app.debugDescription)")
             check.click()
@@ -104,6 +150,7 @@ final class ReleasedUpgradeUITests: XCTestCase {
         log.name = "App and browser lifecycle"
         log.lifetime = .keepAlways
         add(log)
+        progress("Confirmed 0.15.1 remained running with a new PID and no browser launch.")
         shot("0.15.1-running")
     }
 }
