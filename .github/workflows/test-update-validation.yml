@@ -5,6 +5,7 @@ on:
     paths:
       - 'scripts/**'
       - '.github/workflows/auto_update.yaml'
+      - '.github/workflows/verify-published-desktop-update.yaml'
       - '.github/workflows/macos.yaml'
       - '.github/workflows/windows.yaml'
       - '.github/workflows/test-update-validation.yml'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'scripts/**'
       - '.github/workflows/auto_update.yaml'
+      - '.github/workflows/verify-published-desktop-update.yaml'
       - '.github/workflows/macos.yaml'
       - '.github/workflows/windows.yaml'
       - '.github/workflows/test-update-validation.yml'

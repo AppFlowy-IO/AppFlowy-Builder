@@ -1,5 +1,5 @@
 name: Auto Update Workflow
-run-name: ${{ inputs.testOnly && 'Stage feeds' || inputs.verifyPublishedOnly && 'Verify live upgrade' || 'Roll out and verify upgrade' }} · ${{ inputs.appflowyVersion || 'latest' }} · ${{ inputs.platform }} · ${{ inputs.updaterGeneration || 'both' }}
+run-name: Stage desktop upgrade · ${{ inputs.appflowyVersion || 'latest' }} · ${{ inputs.platform }} · ${{ inputs.updaterGeneration || 'both' }}
 
 on:
   workflow_dispatch:
@@ -36,12 +36,7 @@ on:
         required: false
         type: string
       testOnly:
-        description: "Stage and test feeds only (allows drafts, no release writes)"
-        required: false
-        type: boolean
-        default: false
-      verifyPublishedOnly:
-        description: "Replay public discovery and the released-client upgrade without changing the release"
+        description: "Test draft or published installers and skip updating Builder version defaults"
         required: false
         type: boolean
         default: false
@@ -60,8 +55,7 @@ permissions:
   contents: read
 
 env:
-  DELIVERY_MODE: ${{ inputs.testOnly && 'stage' || inputs.verifyPublishedOnly && 'verify' || 'publish' }}
-  GH_TOKEN: ${{ inputs.verifyPublishedOnly && github.token || secrets.BUILDER_GITHUB_TOKEN }}
+  GH_TOKEN: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
 jobs:
   resolve:
@@ -82,14 +76,13 @@ jobs:
           REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
           PLATFORM: ${{ inputs.platform }}
           GENERATION: ${{ inputs.updaterGeneration || 'both' }}
-          CONFLICTING_MODES: ${{ inputs.testOnly && inputs.verifyPublishedOnly }}
+          ALLOW_DRAFT: ${{ inputs.testOnly }}
         run: |
-          if [ "$CONFLICTING_MODES" = true ]; then echo 'Choose either staging or read-only verification'; exit 1; fi
-          python3 scripts/desktop_update_delivery.py resolve --mode "$DELIVERY_MODE" --repository "$REPOSITORY" \
+          python3 scripts/desktop_update_delivery.py resolve --repository "$REPOSITORY" \
             --tag "$REQUESTED_TAG" --version "$ADVERTISED_VERSION" --platform "$PLATFORM" --generation "$GENERATION"
   native:
     needs: resolve
-    if: inputs.platform != 'linux' && !inputs.verifyPublishedOnly
+    if: inputs.platform != 'linux'
     name: ${{ matrix.os }} (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -107,31 +100,17 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Resolve exact published release
+      - name: Read the resolved release
         shell: bash
         env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          RELEASE_ID: ${{ needs.resolve.outputs.release_id }}
           REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
-          REQUESTED_TAG: ${{ needs.resolve.outputs.tag }}
-          ADVERTISED_VERSION: ${{ inputs.releaseVersionNumber }}
-          TEST_ONLY: ${{ inputs.testOnly }}
         run: |
           set -euo pipefail
-          TAG="$REQUESTED_TAG"
-          if [ -z "$TAG" ]; then TAG=$(gh api "repos/$REPOSITORY/releases/latest" --jq .tag_name); fi
           gh api "repos/$REPOSITORY/releases/tags/$TAG" > release.json
-          python3 - "$TAG" <<'PYCODE'
-          import json, os, re, sys
-          release = json.load(open('release.json', encoding='utf-8'))
-          tag = sys.argv[1]
-          version = tag.removeprefix('v')
-          assert re.fullmatch(r'\d+\.\d+\.\d+', version), 'Stable release required'
-          assert not release['prerelease'], 'Stable release required'
-          assert not release['draft'] or os.environ['TEST_ONLY'] == 'true', 'Draft releases require testOnly'
-          override = os.environ['ADVERTISED_VERSION'].removeprefix('v')
-          assert not override or override == version, 'Feed must advertise the actual installer version'
-          with open(os.environ['GITHUB_ENV'], 'a') as output:
-              output.write(f'TAG={tag}\nVERSION={version}\nREPOSITORY={os.environ["REPOSITORY"]}\n')
-          PYCODE
+          jq -e --arg id "$RELEASE_ID" --arg tag "$TAG" '(.id | tostring) == $id and .tag_name == $tag' release.json
+          printf 'TAG=%s\nVERSION=%s\nREPOSITORY=%s\n' "$TAG" "${TAG#v}" "$REPOSITORY" >> "$GITHUB_ENV"
       - name: Download final installer
         shell: bash
         env:
@@ -291,7 +270,7 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
 
-    if: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' && !inputs.verifyPublishedOnly }}
+    if: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' }}
 
     steps:
       - name: Generate Appcast.xml
@@ -337,36 +316,38 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  delivery:
-    name: ${{ inputs.testOnly && 'Validate staged feeds' || 'Verify public feeds and client discovery' }}
+  staged-upgrade:
+    name: Verify staged upgrade
     needs: [resolve, native, linux-x86_64]
-    if: >-
-      always() && !cancelled() && needs.resolve.result == 'success' &&
-      (inputs.verifyPublishedOnly ||
-      ((inputs.platform == 'linux' || needs.native.result == 'success') &&
-      ((inputs.platform != 'linux' && inputs.platform != 'all platforms') ||
-      inputs.updaterGeneration == 'native' || needs.linux-x86_64.result == 'success')))
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    concurrency:
-      group: desktop-update-delivery-${{ inputs.repoOwner }}-${{ inputs.repoName }}-${{ needs.resolve.outputs.tag }}-${{ (inputs.testOnly || inputs.verifyPublishedOnly) && github.run_id || 'publish' }}
-      cancel-in-progress: false
     steps:
+      - name: Require selected producers
+        env:
+          RESOLVED: ${{ needs.resolve.result }}
+          NATIVE: ${{ needs.native.result }}
+          LINUX: ${{ needs.linux-x86_64.result }}
+          NEED_NATIVE: ${{ inputs.platform != 'linux' }}
+          NEED_LINUX: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' }}
+        run: |
+          set -eu
+          test "$RESOLVED" = success
+          if [ "$NEED_NATIVE" = true ]; then test "$NATIVE" = success; fi
+          if [ "$NEED_LINUX" = true ]; then test "$LINUX" = success; fi
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v4
-        if: ${{ !inputs.verifyPublishedOnly }}
         with:
           pattern: '*appcast-*.xml'
           merge-multiple: true
           path: feeds
       - uses: actions/download-artifact@v4
-        if: ${{ !inputs.verifyPublishedOnly && inputs.platform != 'linux' }}
+        if: inputs.platform != 'linux'
         with:
           pattern: release-update-e2e-*
           path: installer-evidence
-      - name: Validate selected feed set and delivery
+      - name: Bind every staged feed to the tested installer
         env:
           REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
           TAG: ${{ needs.resolve.outputs.tag }}
@@ -375,99 +356,27 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           GENERATION: ${{ inputs.updaterGeneration || 'both' }}
         run: |
-          python3 scripts/desktop_update_delivery.py deliver --mode "$DELIVERY_MODE" --repository "$REPOSITORY" \
-            --tag "$TAG" --release-id "$RELEASE_ID" --source "$SOURCE" --platform "$PLATFORM" --generation "$GENERATION"
-
-  installed-upgrade:
-    name: Installed ${{ needs.resolve.outputs.source }} → ${{ needs.resolve.outputs.tag }} (${{ matrix.os }} ${{ matrix.arch }})
-    needs: [resolve, delivery]
-    if: >-
-      always() && !cancelled() && needs.delivery.result == 'success' &&
-      !inputs.testOnly && inputs.updaterGeneration != 'legacy' && needs.resolve.outputs.source != ''
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    env:
-      GH_TOKEN: ${{ github.token }}
-      SOURCE_TAG: ${{ needs.resolve.outputs.source }}
-      TARGET_TAG: ${{ needs.resolve.outputs.tag }}
-      REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
-      ARCH: ${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v4
+          python3 scripts/desktop_update_delivery.py stage --repository "$REPOSITORY" --tag "$TAG" \
+            --release-id "$RELEASE_ID" --source "$SOURCE" --platform "$PLATFORM" --generation "$GENERATION"
+      - uses: actions/upload-artifact@v4
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Verify and install the previous public release
-        run: python scripts/update_e2e/install_previous.py
-      - name: Use the Update button and verify the new app
-        if: runner.os == 'macOS'
-        working-directory: scripts/update_e2e/macos_ui
-        shell: bash
-        run: |
-          set -euo pipefail
-          gem list -i xcodeproj -v 1.27.0 || gem install --user-install --no-document xcodeproj -v 1.27.0
-          ruby project.rb
-          TEST_RUNNER_RELEASED_APP_PATH="$APP_PATH" TEST_RUNNER_SOURCE_VERSION="${SOURCE_TAG#v}" \
-            TEST_RUNNER_TARGET_VERSION="${TARGET_TAG#v}" \
-            xcodebuild test -project UpgradeValidation.xcodeproj -scheme ReleasedUpgradeUITests \
-            -destination "platform=macOS,arch=$(uname -m)" -parallel-testing-enabled NO \
-            -resultBundlePath "$GITHUB_WORKSPACE/evidence/upgrade.xcresult"
-          python "$GITHUB_WORKSPACE/scripts/verify_native_update.py" macos-bundle --bundle "$APP_PATH" --version "${TARGET_TAG#v}"
-          codesign --verify --strict --deep "$APP_PATH"
-      - name: Use the Update button and verify the new app
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: ./scripts/update_e2e/windows_ui.ps1
-      - name: Upload installed upgrade evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installed-upgrade-${{ matrix.os }}-${{ matrix.arch }}
-          path: evidence/
+          name: staged-desktop-update-${{ github.run_attempt }}
+          path: staged-desktop-update.json
           if-no-files-found: error
-          retention-days: 14
 
   update-release-version:
     runs-on: ubuntu-latest
-    needs: [resolve, delivery, installed-upgrade]
-    if: >-
-      always() && !cancelled() && !inputs.testOnly && !inputs.verifyPublishedOnly &&
-      needs.delivery.result == 'success' &&
-      (needs.installed-upgrade.result == 'success' ||
-      ((inputs.platform == 'linux' || inputs.updaterGeneration == 'legacy') && needs.installed-upgrade.result == 'skipped'))
+    needs: [resolve, staged-upgrade]
+    if: always() && !cancelled() && !inputs.testOnly && needs.staged-upgrade.result == 'success'
 
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
-      - name: Get version from workflow input
-        id: get_version
-        uses: actions/github-script@v7
-        with:
-          script: |
-            let version = '${{ needs.resolve.outputs.tag }}';
-
-            // If no version was specified, get the latest release
-            if (!version) {
-              const release = await github.rest.repos.getLatestRelease({
-                owner: '${{ github.event.inputs.repoOwner }}',
-                repo: '${{ github.event.inputs.repoName }}'
-              });
-              version = release.data.tag_name;
-            }
-
-            core.setOutput('version', version);
-            console.log(`Version to update: ${version}`);
-
       - name: Update release.yml with new version
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.tag }}"
           echo "Updating release.yml with version: $VERSION"
 
           # Update run-name default version (line 2)
@@ -491,7 +400,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: update version to ${{ steps.get_version.outputs.version }}"
+            git commit -m "chore: update version to ${{ needs.resolve.outputs.tag }}"
             for i in 1 2 3 4 5; do
               if git push; then
                 echo "✅ Push succeeded on attempt $i"
@@ -504,38 +413,3 @@ jobs:
             echo "❌ Push failed after 5 attempts"
             exit 1
           fi
-
-  result:
-    name: Auto-update result
-    needs: [resolve, delivery, installed-upgrade, update-release-version]
-    if: always()
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ''
-      RESOLVED: ${{ needs.resolve.result }}
-      FEEDS: ${{ needs.delivery.result }}
-      UPGRADE: ${{ needs.installed-upgrade.result }}
-      CONFIG: ${{ needs.update-release-version.result }}
-      REQUIRE_UPGRADE: ${{ !inputs.testOnly && inputs.platform != 'linux' && inputs.updaterGeneration != 'legacy' }}
-      SOURCE: ${{ needs.resolve.outputs.source }}
-      TARGET: ${{ needs.resolve.outputs.tag }}
-      PLATFORM: ${{ inputs.platform }}
-      GENERATION: ${{ inputs.updaterGeneration || 'both' }}
-    steps:
-      - name: Require every check selected by the dispatch
-        run: |
-          {
-            echo "### Auto-update · $DELIVERY_MODE"
-            echo
-            echo "Release **$TARGET** · $PLATFORM · $GENERATION"
-            echo
-            echo "| Check | Result |"
-            echo "| --- | --- |"
-            echo "| Resolve release | $RESOLVED |"
-            echo "| Feed validation | $FEEDS |"
-            echo "| Installed upgrade ${SOURCE:+from $SOURCE} | $UPGRADE |"
-            echo "| Release defaults | $CONFIG |"
-          } >> "$GITHUB_STEP_SUMMARY"
-          test "$RESOLVED" = success && test "$FEEDS" = success || exit 1
-          if [ "$REQUIRE_UPGRADE" = true ]; then test -n "$SOURCE" && test "$UPGRADE" = success || exit 1; fi
-          if [ "$DELIVERY_MODE" = publish ]; then test "$CONFIG" = success; fi

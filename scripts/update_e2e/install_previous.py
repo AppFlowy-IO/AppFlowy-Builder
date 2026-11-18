@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from desktop_update_delivery import gh, release_asset
+from desktop_update_delivery import asset_digest, gh, release_asset
 from verify_native_update import validate_macos_bundle
 
 
@@ -46,7 +46,7 @@ def main():
         checked("gh", "release", "download", tag, "--repo", repo, "--pattern", name, "--output", package)
         with package.open("rb") as data:
             checksum = "sha256:" + hashlib.file_digest(data, "sha256").hexdigest()
-        if checksum != asset.get("digest") or package.stat().st_size != asset["size"]:
+        if checksum != asset_digest(repo, asset) or package.stat().st_size != asset["size"]:
             raise ValueError(f"Previous installer does not match GitHub's release asset {asset['id']}")
         if mac:
             app = Path("/Applications/AppFlowy.app")

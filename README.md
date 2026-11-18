@@ -160,44 +160,46 @@ and a DLL that lacks PDFium's exports. Unit tests run with
 - Click the `Run workflow` button.
 - Enter the required variables as prompted.
 
-## Public desktop auto-updates
+## Desktop auto-update checks
 
-In **Auto Update Workflow**, select the release tag and leave the platform at
-`all platforms` and `updaterGeneration` at `both` for a full rollout.
+**Auto Update Workflow finishes before feed publication.** Select a tag such as
+`0.15.1`. The default selection covers both Mac architectures, Windows x64 and
+the Linux legacy notification.
 
-1. Builder downloads the selected signed installers, generates their appcasts,
-   and exercises the generated feeds through Sparkle and WinSparkle on standard
-   GitHub-hosted runners.
-2. Builder attaches the selected XML files to the same release. It verifies their
-   bytes through both GitHub's tagged and latest public download URLs. For native
-   updates it queries the public desktop update API as the previous stable client.
-   The version, enabled policy, feed URL and installer URL must match. Discovery
-   can take up to 20 minutes while the service refreshes cached release metadata.
-3. For native targets, a fresh runner installs the previous official release,
-   opens its Update dialog and completes the native installer. The test checks
-   that the old process exits, the requested version runs from the installation
-   path and no browser opens. Windows starts the installed executable when Inno
-   Setup leaves it closed. Each platform uploads its evidence to the run.
-4. Builder advances the release version default after the selected checks pass.
-   A failure after publication can leave the feeds attached. Inspect the failed
-   step and its evidence before retrying.
+1. Builder resolves the previous published stable version (for example,
+   `0.15.0`), verifies its release installer and installs it on a standard hosted
+   runner. It signs the target installer and generates the selected XML feeds.
+2. A loopback HTTP server serves the candidate feed and the signed installer.
+   Sparkle upgrades the installed Mac bundle and relaunches it. On Windows a
+   test driver uses the previous installation’s WinSparkle DLL and matching key
+   to run Inno Setup against the existing installation, then starts the updated
+   executable. The tests check both requests, the installed target version and
+   process startup. The app’s Flutter button and the live update API are outside
+   this staging check.
+3. **Verify staged upgrade** checks every selected XML filename and matches the
+   installer digest to the successful upgrade evidence. The run saves the XML
+   artifacts and a JSON record of their SHA-256 hashes. On a normal run Builder
+   then advances its release version default. `testOnly=true` also accepts drafts
+   and skips the defaults commit.
+4. After the run succeeds, copy its XML artifacts unchanged to the same GitHub
+   release. Run **Verify published desktop update** with the successful staging
+   run ID. This read-only workflow checks the tagged and latest public URLs
+   against the recorded hashes. For every selected native platform, the live
+   API must return the correct version, enabled policy, exact appcast and matching
+   installer for a client on the previous version. It allows up to 20 minutes
+   for the server’s release cache to refresh.
 
-| Dispatch | Outcome |
+| Selection | Feeds |
 | --- | --- |
-| Default | Publish and verify the latest stable release. The Builder credential needs contents write access to the target release repository. |
-| `verifyPublishedOnly=true` | Repeat public discovery and the installed-client checks for the current rollout using its existing feeds. |
-| `testOnly=true` | Test the signed installers and stage feed artifacts. Supports draft and historical releases. |
+| `legacy` | `appcast-{os}-{arch}.xml`, discovered through GitHub’s latest release |
+| `native` | `native-appcast-{os}-{arch}.xml`, discovered through the deployment’s update API |
+| `both` | Both filenames for each native target, plus the Linux legacy feed when selected |
 
-`legacy` selects `appcast-{os}-{arch}.xml`, which clients discover through
-GitHub's latest release. `native` selects `native-appcast-{os}-{arch}.xml`,
-which a client discovers through its server. Both names are required even when
-their bytes match. Linux supports only the legacy update notification. The
-installed-client test covers native macOS ARM64, macOS Intel and Windows x64.
-
-To replay the 0.15.0 → 0.15.1 rollout while 0.15.1 is the latest release:
+Both filenames must be attached even when their hashes match. Linux supports
+only the legacy notification. See [Native updater CI](scripts/update_e2e/README.md)
+for fixture coverage and rehearsal commands.
 
 ```sh
-gh workflow run auto_update.yaml --repo AppFlowy-IO/AppFlowy-Builder \
-  -f appflowyVersion=0.15.1 -f platform='all platforms' -f updaterGeneration=both \
-  -f verifyPublishedOnly=true
+gh workflow run verify-published-desktop-update.yaml --repo AppFlowy-IO/AppFlowy-Builder \
+  -f stagingRunId="$STAGING_RUN_ID"
 ```
