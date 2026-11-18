@@ -1,0 +1,45 @@
+name: Installed AppFlowy 0.15.0 to 0.15.1
+on:
+  push:
+    branches: [test/installed-update-0150-to-0151-20261118]
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install and verify the released 0.15.0 Mac app
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p evidence
+          curl -fsSL --retry 2 -o "$RUNNER_TEMP/AppFlowy.dmg" https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.15.0/AppFlowy-0.15.0-macos-arm64.dmg
+          echo "f431bf8fb995cb9b8fb2dd7701ace55707793ef8ae9a8024e820802ad5fe8ef0  $RUNNER_TEMP/AppFlowy.dmg" | shasum -a 256 -c -
+          mount="$RUNNER_TEMP/appflowy-dmg"
+          mkdir "$mount"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$RUNNER_TEMP/AppFlowy.dmg"
+          trap 'hdiutil detach "$mount"' EXIT
+          test ! -e /Applications/AppFlowy.app
+          ditto "$mount/AppFlowy.app" /Applications/AppFlowy.app
+          codesign --verify --deep --strict /Applications/AppFlowy.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/AppFlowy.app/Contents/Info.plist)" = 0.15.0
+          curl -fsSL 'https://beta.appflowy.cloud/api/desktop-update?os=macos&arch=aarch64&current_version=0.15.0' > evidence/discovery.json
+          jq -e '.data.auto_update_enabled and .data.latest_version == "0.15.1" and .data.appcast_url == "https://github.com/AppFlowy-IO/AppFlowy/releases/download/0.15.1/native-appcast-macos-arm64.xml"' evidence/discovery.json
+      - name: Update from the released app and observe the relaunch
+        run: python3 -u .github/test-installed-update/exercise.py /Applications/AppFlowy.app evidence
+      - name: Collect screenshots and app lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-app-update-evidence
+          path: |
+            evidence/*.json
+            evidence/*.jsonl
+            evidence/*.png
+            evidence/*.txt
+          retention-days: 7
