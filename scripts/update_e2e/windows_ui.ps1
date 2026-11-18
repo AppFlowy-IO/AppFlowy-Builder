@@ -92,8 +92,14 @@ try {
     $until = (Get-Date).AddMinutes(4)
     do {
         foreach ($w in $desktop.FindAll($children, $any)) {
-            if ($w.Current.Name -notmatch '^(Setup.*AppFlowy|AppFlowy.*Setup|Select Setup Language)$') { continue }
-            $button = Get-Control $w @('OK', 'Next >', 'Install', 'Finish', 'Yes')
+            if ($w.Current.ProcessId -eq $old.Id) {
+                # WinSparkle can ask for consent a second time after the download.
+                $button = Get-Control $w @('Install update')
+            } elseif ($w.Current.Name -match '^(Setup.*AppFlowy.*|AppFlowy.*Setup.*|Select Setup Language)$') {
+                $button = Get-Control $w @('OK', 'Next >', 'Install', 'Finish', 'Yes')
+            } else {
+                continue
+            }
             if ($button) { Press-Control $button }
         }
         Start-Sleep -Seconds 1

@@ -160,27 +160,44 @@ and a DLL that lacks PDFium's exports. Unit tests run with
 - Click the `Run workflow` button.
 - Enter the required variables as prompted.
 
-### Legacy and native desktop updater feeds
+## Public desktop auto-updates
 
-Dispatch `auto_update.yaml` with `updaterGeneration` set to `both` (default),
-`legacy`, or `native`. Omitted values from existing dispatch scripts mean `both`.
-Each selected macOS/Windows installer is downloaded and signed once; both feed
-variants share its signature, byte length, real build version, display version,
-compatibility metadata and critical-update marker.
+In **Auto Update Workflow**, select the release tag and leave the platform at
+`all platforms` and `updaterGeneration` at `both` for a full rollout.
 
-| Generation | Release asset / workflow artifact | Discovery |
-| --- | --- | --- |
-| Legacy | `appcast-{os}-{arch}.xml` | Existing clients use GitHub's latest-release URL |
-| Native | `native-appcast-{os}-{arch}.xml` | New clients receive a version-pinned URL from their server |
+1. Builder downloads the selected signed installers, generates their appcasts,
+   and exercises the generated feeds through Sparkle and WinSparkle on standard
+   GitHub-hosted runners.
+2. Builder attaches the selected XML files to the same release. It verifies their
+   bytes through both GitHub's tagged and latest public download URLs. For native
+   updates it queries the public desktop update API as the previous stable client.
+   The version, enabled policy, feed URL and installer URL must match. Discovery
+   can take up to 20 minutes while the service refreshes cached release metadata.
+3. For native targets, a fresh runner installs the previous official release,
+   opens its Update dialog and completes the native installer. The test checks
+   that the old process exits, the requested version runs from the installation
+   path and no browser opens. Windows starts the installed executable when Inno
+   Setup leaves it closed. Each platform uploads its evidence to the run.
+4. Builder advances the release version default after the selected checks pass.
+   A failure after publication can leave the feeds attached. Inspect the failed
+   step and its evidence before retrying.
 
-Publish the selected artifacts to the matching release with these exact filenames.
-Do not overwrite a legacy filename with only a native-prefixed asset. Linux retains
-its legacy feed only; `native` plus `linux` generates no feeds and does not advance
-the release default. Generation does not upload assets to a release automatically.
+| Dispatch | Outcome |
+| --- | --- |
+| Default | Publish and verify the latest stable release. The Builder credential needs contents write access to the target release repository. |
+| `verifyPublishedOnly=true` | Repeat public discovery and the installed-client checks for the current rollout using its existing feeds. |
+| `testOnly=true` | Test the signed installers and stage feed artifacts. Supports draft and historical releases. |
 
-The Admin toggle governs only new clients. Legacy clients do not query that policy;
-selecting `native` skips generating legacy feeds but does not remove previously
-published legacy assets. If older clients must stay on a different target version,
-generate their legacy feed separately with that target's `appflowyVersion`; any
-publication through a moving latest-release URL must be coordinated explicitly.
-No workflow run or release publication is implied by merging this workflow.
+`legacy` selects `appcast-{os}-{arch}.xml`, which clients discover through
+GitHub's latest release. `native` selects `native-appcast-{os}-{arch}.xml`,
+which a client discovers through its server. Both names are required even when
+their bytes match. Linux supports only the legacy update notification. The
+installed-client test covers native macOS ARM64, macOS Intel and Windows x64.
+
+To replay the 0.15.0 → 0.15.1 rollout while 0.15.1 is the latest release:
+
+```sh
+gh workflow run auto_update.yaml --repo AppFlowy-IO/AppFlowy-Builder \
+  -f appflowyVersion=0.15.1 -f platform='all platforms' -f updaterGeneration=both \
+  -f verifyPublishedOnly=true
+```

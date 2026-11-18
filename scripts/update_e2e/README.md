@@ -57,12 +57,12 @@ on Windows the controller launches it after Inno Setup completes, because the
 production installer has no `[Run]` entry. Only GitHub-hosted runners can execute
 this mode, so an installed AppFlowy profile is never reused.
 
-These tests cover the native installer boundary. They do **not** exercise the
-unchanged 0.14.7 Flutter client, cloud release discovery, server compatibility
-policy, the in-app consent UI, or document/database migration. A fixture data
-sentinel is not a workspace migration test. Validating those requires a separate
-full-client test channel and test account. The candidate key/library checks
-guard the following update; they do not claim to perform candidate → N+1.
+The candidate test exercises the generated feed with a loopback enclosure URL
+and runner-owned Windows install arguments. During a live rollout, a separate
+installed-upgrade job uses the previous signed Flutter app and both public
+discovery and native consent. The run includes screenshots and process evidence
+for the selected native platforms. The optional read-only replay uses the exact
+feeds already attached to the release. See [Public desktop auto-updates](../../README.md#public-desktop-auto-updates).
 
 ## Run fixtures locally
 

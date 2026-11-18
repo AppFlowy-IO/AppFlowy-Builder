@@ -38,6 +38,8 @@ def main():
     asset = release_asset(release, name)
     evidence = Path("evidence")
     evidence.mkdir()
+    record = {"source": tag, "release_id": release["id"], "asset": name, "target": os.environ["TARGET_TAG"]}
+    (evidence / "previous-release.json").write_text(json.dumps(record, indent=2))
     with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as directory:
         root = Path(directory)
         package = root / name
@@ -61,7 +63,7 @@ def main():
             checked("codesign", "--verify", "--strict", "--deep", app)
             checked("spctl", "--assess", "--type", "execute", app)
         else:
-            powershell = ["powershell", "-NoProfile", "-Command"]
+            powershell = ["pwsh", "-NoProfile", "-Command"]
             os.environ["SOURCE_INSTALLER"] = str(package)
             checked(*powershell, "if ((Get-AuthenticodeSignature -LiteralPath $env:SOURCE_INSTALLER).Status -ne 'Valid') { exit 1 }")
             # The production Inno setup uses its default directory on every upgrade.
@@ -75,9 +77,7 @@ def main():
             os.environ["SOURCE_VERSION"] = version
             checked(*powershell, "if ([version](Get-Item -LiteralPath $env:APP_PATH).VersionInfo.ProductVersion -notin "
                     "([version]$env:SOURCE_VERSION, [version]($env:SOURCE_VERSION+'.0'))) { exit 1 }")
-    (evidence / "previous-release.json").write_text(json.dumps({
-        "source": tag, "release_id": release["id"], "asset": name, "sha256": checksum,
-        "path": str(app), "target": os.environ["TARGET_TAG"]}, indent=2))
+    (evidence / "previous-release.json").write_text(json.dumps({**record, "sha256": checksum, "path": str(app)}, indent=2))
     with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env:
         print(f"APP_PATH={app}", file=env)
 

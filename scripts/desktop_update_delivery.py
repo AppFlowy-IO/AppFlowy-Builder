@@ -55,7 +55,8 @@ def selected(platform, generation):
 
 
 def previous_tag(tags, target):
-    version = lambda m: tuple(map(int, m.groups()))
+    def version(match):
+        return tuple(map(int, match.groups()))
     limit = version(STABLE.fullmatch(target))
     prior = [(version(m), tag) for tag in tags if (m := STABLE.fullmatch(tag)) and version(m) < limit]
     if not prior:
@@ -175,6 +176,20 @@ def digest(payload):
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def check_tested_installer(evidence, release, repo, system, arch):
+    version = release["tag_name"].removeprefix("v")
+    name = installer_name(version, system, arch)
+    asset = release_asset(release, name)
+    directory = evidence / f"release-update-e2e-{system}-{arch}"
+    suites = ["update-e2e", "update-e2e-legacy"] if system == "windows" else ["update-e2e"]
+    expected = asset_digest(repo, asset)
+    for suite in suites:
+        report = json.loads((directory / suite / "reports/candidate/result.json").read_bytes())
+        if (report["scenario"] != "candidate" or report["status"] != "passed" or report["platform"] != system
+                or report["target_version"] != version or "sha256:" + report["installer_sha256"] != expected):
+            raise ValueError(f"{name} differs from the installer that passed {suite}")
+
+
 def deliver(args):
     location = f"repos/{args.repository}/releases"
     def read_release():
@@ -195,6 +210,12 @@ def deliver(args):
             payload = files[name].read_bytes()
             inspect_feed(payload, release, args.repository, system, arch)
             staged[name] = digest(payload)
+        for system, arch in sorted({(s, a) for _, s, a in targets if s != "linux"}):
+            check_tested_installer(args.evidence, release, args.repository, system, arch)
+            legacy = f"appcast-{system}-{arch}.xml"
+            native = f"native-{legacy}"
+            if legacy in staged and native in staged and staged[legacy] != staged[native]:
+                raise ValueError(f"The two {system}/{arch} feeds differ from the payload exercised by the updater")
         if args.mode == "stage":
             print(f"Validated {len(staged)} staged feeds for {args.tag}.")
             return
@@ -204,15 +225,15 @@ def deliver(args):
                 continue
             flags = ["--clobber"] if existing else []
             gh("release", "upload", args.tag, files[name], "--repo", args.repository, *flags)
-        release = read_release()
-
     base = f"https://github.com/{args.repository}/releases"
     def verify_all():
+        release = read_release()
         for name, system, arch in targets:
             asset = release_asset(release, name)
             url = f"{base}/download/{args.tag}/{name}"
-            expected = staged.get(name) or asset_digest(args.repository, asset)
-            if asset["browser_download_url"] != url or asset_digest(args.repository, asset) != expected:
+            actual = asset_digest(args.repository, asset)
+            expected = staged.get(name, actual)
+            if asset["browser_download_url"] != url or actual != expected:
                 raise ValueError(f"Release asset differs from the verified feed: {name}")
             payload = public_bytes(url)
             if digest(payload) != expected or digest(public_bytes(f"{base}/latest/download/{name}")) != expected:
@@ -241,6 +262,7 @@ def main():
     parser.add_argument("--source", default="")
     parser.add_argument("--version", default="")
     parser.add_argument("--feeds", type=Path, default=Path("feeds"))
+    parser.add_argument("--evidence", type=Path, default=Path("installer-evidence"))
     parser.add_argument("--wait-seconds", type=int, default=1200)
     args = parser.parse_args()
     if args.command == "deliver" and (not args.release_id or not STABLE.fullmatch(args.tag)):

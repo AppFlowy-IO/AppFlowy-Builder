@@ -61,7 +61,7 @@ permissions:
 
 env:
   DELIVERY_MODE: ${{ inputs.testOnly && 'stage' || inputs.verifyPublishedOnly && 'verify' || 'publish' }}
-  GH_TOKEN: ${{ secrets.BUILDER_GITHUB_TOKEN }}
+  GH_TOKEN: ${{ inputs.verifyPublishedOnly && github.token || secrets.BUILDER_GITHUB_TOKEN }}
 
 jobs:
   resolve:
@@ -353,6 +353,11 @@ jobs:
           pattern: '*appcast-*.xml'
           merge-multiple: true
           path: feeds
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.verifyPublishedOnly && inputs.platform != 'linux' }}
+        with:
+          pattern: release-update-e2e-*
+          path: installer-evidence
       - name: Validate selected feed set and delivery
         env:
           REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
@@ -408,7 +413,7 @@ jobs:
           codesign --verify --strict --deep "$APP_PATH"
       - name: Use the Update button and verify the new app
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: ./scripts/update_e2e/windows_ui.ps1
       - name: Upload installed upgrade evidence
         if: always()
@@ -426,7 +431,7 @@ jobs:
       always() && !cancelled() && !inputs.testOnly && !inputs.verifyPublishedOnly &&
       needs.delivery.result == 'success' &&
       (needs.installed-upgrade.result == 'success' ||
-      (needs.resolve.outputs.source == '' && needs.installed-upgrade.result == 'skipped'))
+      ((inputs.platform == 'linux' || inputs.updaterGeneration == 'legacy') && needs.installed-upgrade.result == 'skipped'))
 
     steps:
       - uses: actions/checkout@v4
@@ -491,3 +496,38 @@ jobs:
             echo "❌ Push failed after 5 attempts"
             exit 1
           fi
+
+  result:
+    name: Auto-update result
+    needs: [resolve, delivery, installed-upgrade, update-release-version]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ''
+      RESOLVED: ${{ needs.resolve.result }}
+      FEEDS: ${{ needs.delivery.result }}
+      UPGRADE: ${{ needs.installed-upgrade.result }}
+      CONFIG: ${{ needs.update-release-version.result }}
+      REQUIRE_UPGRADE: ${{ !inputs.testOnly && inputs.platform != 'linux' && inputs.updaterGeneration != 'legacy' }}
+      SOURCE: ${{ needs.resolve.outputs.source }}
+      TARGET: ${{ needs.resolve.outputs.tag }}
+      PLATFORM: ${{ inputs.platform }}
+      GENERATION: ${{ inputs.updaterGeneration || 'both' }}
+    steps:
+      - name: Require every check selected by the dispatch
+        run: |
+          {
+            echo "### Auto-update · $DELIVERY_MODE"
+            echo
+            echo "Release **$TARGET** · $PLATFORM · $GENERATION"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Resolve release | $RESOLVED |"
+            echo "| Feed validation | $FEEDS |"
+            echo "| Installed upgrade ${SOURCE:+from $SOURCE} | $UPGRADE |"
+            echo "| Release defaults | $CONFIG |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$RESOLVED" = success && test "$FEEDS" = success || exit 1
+          if [ "$REQUIRE_UPGRADE" = true ]; then test -n "$SOURCE" && test "$UPGRADE" = success || exit 1; fi
+          if [ "$DELIVERY_MODE" = publish ]; then test "$CONFIG" = success; fi
