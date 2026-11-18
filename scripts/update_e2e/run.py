@@ -154,26 +154,31 @@ def package_fixture(case, target, version):
     return case / "update.exe"
 
 
-def feed_xml(case, base_url, installer, signature, version, build):
-    root = ET.Element("rss", version="2.0")
-    channel = ET.SubElement(root, "channel")
-    ET.SubElement(channel, "title").text = "AppFlowy isolated update test"
-    item = ET.SubElement(channel, "item")
-    ET.SubElement(item, f"{{{SPARKLE}}}version").text = build
-    ET.SubElement(item, f"{{{SPARKLE}}}shortVersionString").text = version
-    attributes = {
-        "url": f"{base_url}/{installer.name}", "length": str(installer.stat().st_size),
-        "type": "application/octet-stream",
-        f"{{{SPARKLE}}}version": build,
-        f"{{{SPARKLE}}}shortVersionString": version,
-        f"{{{SPARKLE}}}{'edSignature' if PLATFORM == 'macos' else 'dsaSignature'}": signature,
-    }
+def feed_xml(case, base_url, installer, signature, version, build, appcast=None):
+    if appcast:
+        root = ET.parse(appcast).getroot()
+        enclosure = root.find("channel/item/enclosure")
+        if enclosure is None:
+            raise ValueError("Generated feed has no installer enclosure")
+    else:
+        root = ET.Element("rss", version="2.0")
+        channel = ET.SubElement(root, "channel")
+        ET.SubElement(channel, "title").text = "AppFlowy isolated update test"
+        item = ET.SubElement(channel, "item")
+        ET.SubElement(item, f"{{{SPARKLE}}}version").text = build
+        ET.SubElement(item, f"{{{SPARKLE}}}shortVersionString").text = version
+        enclosure = ET.SubElement(item, "enclosure", {
+            "length": str(installer.stat().st_size), "type": "application/octet-stream",
+            f"{{{SPARKLE}}}{'edSignature' if PLATFORM == 'macos' else 'dsaSignature'}": signature,
+        })
+    # Route the same signed bytes through the isolated test server. The live
+    # gate separately consumes the unmodified public URL via the released app.
+    enclosure.set("url", f"{base_url}/{installer.name}")
     if PLATFORM == "windows":
-        attributes[f"{{{SPARKLE}}}installerArguments"] = (
+        enclosure.set(f"{{{SPARKLE}}}installerArguments", (
             f'/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="{case / "install"}" '
             f'/LOG="{case / "installer.log"}"'
-        )
-    ET.SubElement(item, "enclosure", attributes)
+        ))
     (case / "appcast.xml").write_bytes(ET.tostring(root, encoding="utf-8", xml_declaration=True))
 
 
@@ -300,7 +305,7 @@ def exercise(root, deps, scenario, args):
                 signature = sign(wrong, installer)
             elif scenario == "single-hash":
                 signature = base64.b64encode(private.sign(installer.read_bytes(), hashes.SHA1())).decode()
-            feed_xml(case, base, installer, signature, version, args.build_version or version)
+            feed_xml(case, base, installer, signature, version, args.build_version or version, args.appcast)
             with (case / "console.log").open("wb") as console:
                 process = subprocess.Popen([str(executable(host))], stdout=console, stderr=subprocess.STDOUT)
                 expected = "skipped" if scenario == "skip" else "error" if scenario in ("bad-signature", "missing-key", "single-hash") else "terminated" if candidate else "relaunched"
@@ -373,6 +378,7 @@ def main():
     parser.add_argument("--scenario", choices=("success", "bad-signature", "missing-key", "skip", "single-hash"))
     parser.add_argument("--installer", type=Path, help="Final signed release installer (CI only)")
     parser.add_argument("--signature-file", type=Path)
+    parser.add_argument("--appcast", type=Path, help="Generated release feed to exercise")
     parser.add_argument("--version")
     parser.add_argument("--build-version")
     parser.add_argument("--winsparkle-version", choices=("0.8.1", "0.9.4"), default="0.9.4")
@@ -384,7 +390,7 @@ def main():
             parser.error("Production installer tests require a disposable GitHub-hosted runner")
         if not args.signature_file or not args.version or args.scenario:
             parser.error("--installer requires --signature-file and --version, without --scenario")
-    elif args.signature_file or args.version or args.build_version:
+    elif args.signature_file or args.version or args.build_version or args.appcast:
         parser.error("Release metadata requires --installer")
     if args.scenario in ("missing-key", "skip") and PLATFORM != "macos":
         parser.error("This scenario is macOS-only")

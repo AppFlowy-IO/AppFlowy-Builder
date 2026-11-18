@@ -1,10 +1,11 @@
 name: Auto Update Workflow
+run-name: ${{ inputs.testOnly && 'Stage feeds' || inputs.verifyPublishedOnly && 'Verify live upgrade' || 'Roll out and verify upgrade' }} · ${{ inputs.appflowyVersion || 'latest' }} · ${{ inputs.platform }} · ${{ inputs.updaterGeneration || 'both' }}
 
 on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "Target platform (windows/macos)"
+        description: "Target platform (macOS and Windows support native upgrades)"
         required: true
         type: choice
         options:
@@ -35,7 +36,12 @@ on:
         required: false
         type: string
       testOnly:
-        description: "Test installers without updating release version configuration (allows drafts)"
+        description: "Stage and test feeds only (allows drafts, no release writes)"
+        required: false
+        type: boolean
+        default: false
+      verifyPublishedOnly:
+        description: "Replay public discovery and the released-client upgrade without changing the release"
         required: false
         type: boolean
         default: false
@@ -50,7 +56,11 @@ on:
         type: string
         default: "AppFlowy"
 
+permissions:
+  contents: read
+
 env:
+  DELIVERY_MODE: ${{ inputs.testOnly && 'stage' || inputs.verifyPublishedOnly && 'verify' || 'publish' }}
   GH_TOKEN: ${{ secrets.BUILDER_GITHUB_TOKEN }}
 
 jobs:
@@ -58,45 +68,46 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      release_id: ${{ steps.release.outputs.release_id }}
+      source: ${{ steps.release.outputs.source }}
+      matrix: ${{ steps.release.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - id: release
         env:
           REQUESTED_TAG: ${{ inputs.appflowyVersion }}
+          ADVERTISED_VERSION: ${{ inputs.releaseVersionNumber }}
           REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
+          PLATFORM: ${{ inputs.platform }}
+          GENERATION: ${{ inputs.updaterGeneration || 'both' }}
+          CONFLICTING_MODES: ${{ inputs.testOnly && inputs.verifyPublishedOnly }}
         run: |
-          set -euo pipefail
-          TAG="$REQUESTED_TAG"
-          if [ -z "$TAG" ]; then TAG=$(gh api "repos/$REPOSITORY/releases/latest" --jq .tag_name); fi
-          [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "$CONFLICTING_MODES" = true ]; then echo 'Choose either staging or read-only verification'; exit 1; fi
+          python3 scripts/desktop_update_delivery.py resolve --mode "$DELIVERY_MODE" --repository "$REPOSITORY" \
+            --tag "$REQUESTED_TAG" --version "$ADVERTISED_VERSION" --platform "$PLATFORM" --generation "$GENERATION"
   native:
     needs: resolve
-    if: inputs.platform != 'linux'
+    if: inputs.platform != 'linux' && !inputs.verifyPublishedOnly
     name: ${{ matrix.os }} (${{ matrix.arch }})
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { os: macos, arch: arm64, package_arch: universal, runner: macos-15 }
-          - { os: macos, arch: x86_64, package_arch: x86_64, runner: macos-15-intel }
-          - { os: windows, arch: x86_64, package_arch: x86_64, runner: windows-latest }
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         with:
           python-version: "3.11"
       - name: Install update verification dependencies
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         run: python -m pip install -r scripts/update_e2e/requirements.txt
       - name: Set up MSVC for native update host
-        if: matrix.os == 'windows' && (inputs.platform == 'all platforms' || inputs.platform == 'windows')
+        if: matrix.os == 'windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
       - name: Resolve exact published release
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         shell: bash
         env:
           REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
@@ -122,7 +133,6 @@ jobs:
               output.write(f'TAG={tag}\nVERSION={version}\nREPOSITORY={os.environ["REPOSITORY"]}\n')
           PYCODE
       - name: Download final installer
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         shell: bash
         env:
           OS: ${{ matrix.os }}
@@ -136,7 +146,7 @@ jobs:
           python3 scripts/verify_native_update.py release-asset \
             --release-json release.json --asset-name "$ASSET" --installer "app.$EXT"
       - name: Sign macOS installer and read its actual build version
-        if: matrix.os == 'macos' && (inputs.platform == 'all platforms' || inputs.platform == 'macos')
+        if: matrix.os == 'macos'
         shell: bash
         env:
           UPDATE_PRIVATE_KEY: ${{ secrets.MACOS_AUTO_UPDATE_PRIVATE_KEY }}
@@ -159,7 +169,7 @@ jobs:
             --platform macos --installer app.dmg --signature-file signature.txt
           echo "BUILD_VERSION=$BUILD_VERSION" >> "$GITHUB_ENV"
       - name: Verify Windows Authenticode signature
-        if: matrix.os == 'windows' && (inputs.platform == 'all platforms' || inputs.platform == 'windows')
+        if: matrix.os == 'windows'
         shell: pwsh
         run: |
           $signature = Get-AuthenticodeSignature -LiteralPath app.exe
@@ -172,7 +182,7 @@ jobs:
             throw "Windows installer version $version does not match release $env:VERSION"
           }
       - name: Sign Windows installer
-        if: matrix.os == 'windows' && (inputs.platform == 'all platforms' || inputs.platform == 'windows')
+        if: matrix.os == 'windows'
         shell: bash
         env:
           UPDATE_PRIVATE_KEY: ${{ secrets.WINDOWS_AUTO_UPDATE_PRIVATE_KEY }}
@@ -189,37 +199,7 @@ jobs:
           python3 scripts/verify_native_update.py signature \
             --platform windows --installer app.exe --signature-file signature.txt
           echo "BUILD_VERSION=$VERSION" >> "$GITHUB_ENV"
-      - name: Test signed installer through the native updater
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
-        shell: bash
-        env:
-          OS: ${{ matrix.os }}
-        run: |
-          set -euo pipefail
-          EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
-          python scripts/update_e2e/run.py --output update-e2e \
-            --installer "app.$EXT" --signature-file signature.txt \
-            --version "$VERSION" --build-version "$BUILD_VERSION"
-      - name: Test signed installer through the legacy Windows updater
-        if: matrix.os == 'windows' && (inputs.platform == 'all platforms' || inputs.platform == 'windows')
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/update_e2e/run.py --output update-e2e-legacy --winsparkle-version 0.8.1 \
-            --installer app.exe --signature-file signature.txt \
-            --version "$VERSION" --build-version "$BUILD_VERSION"
-      - name: Upload native update evidence
-        if: always() && (inputs.platform == 'all platforms' || inputs.platform == matrix.os)
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-update-e2e-${{ matrix.os }}-${{ matrix.arch }}
-          path: |
-            update-e2e/reports/
-            update-e2e-legacy/reports/
-          if-no-files-found: warn
-          retention-days: 14
       - name: Read release compatibility manifest
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         shell: bash
         run: |
           set -euo pipefail
@@ -235,7 +215,6 @@ jobs:
           PYCODE
           fi
       - name: Generate legacy and native appcasts
-        if: inputs.platform == 'all platforms' || inputs.platform == matrix.os
         shell: bash
         env:
           OS: ${{ matrix.os }}
@@ -254,8 +233,38 @@ jobs:
           if [ "$CRITICAL" = true ]; then ARGS+=(--critical); fi
           if [ -n "${MINIMUM_SERVER_VERSION:-}" ]; then ARGS+=(--minimum-server-version "$MINIMUM_SERVER_VERSION"); fi
           python3 scripts/generate_native_appcast.py "${ARGS[@]}"
+      - name: Test signed installer through the native updater
+        shell: bash
+        env:
+          OS: ${{ matrix.os }}
+        run: |
+          set -euo pipefail
+          EXT=exe; if [ "$OS" = macos ]; then EXT=dmg; fi
+          FEEDS=(feeds/*appcast-*.xml)
+          python scripts/update_e2e/run.py --output update-e2e --appcast "${FEEDS[0]}" \
+            --installer "app.$EXT" --signature-file signature.txt \
+            --version "$VERSION" --build-version "$BUILD_VERSION"
+      - name: Test signed installer through the legacy Windows updater
+        if: matrix.os == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FEEDS=(feeds/*appcast-*.xml)
+          python scripts/update_e2e/run.py --output update-e2e-legacy --winsparkle-version 0.8.1 --appcast "${FEEDS[0]}" \
+            --installer app.exe --signature-file signature.txt \
+            --version "$VERSION" --build-version "$BUILD_VERSION"
+      - name: Upload native update evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-update-e2e-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            update-e2e/reports/
+            update-e2e-legacy/reports/
+          if-no-files-found: warn
+          retention-days: 14
       - uses: actions/upload-artifact@v4
-        if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'native'
+        if: inputs.updaterGeneration != 'native'
         with:
           name: appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
           path: feeds/appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
@@ -263,7 +272,7 @@ jobs:
           compression-level: 0
 
       - uses: actions/upload-artifact@v4
-        if: (inputs.platform == 'all platforms' || inputs.platform == matrix.os) && inputs.updaterGeneration != 'legacy'
+        if: inputs.updaterGeneration != 'legacy'
         with:
           name: native-appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
           path: feeds/native-appcast-${{ matrix.os }}-${{ matrix.arch }}.xml
@@ -274,51 +283,16 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
 
-    if: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' }}
+    if: ${{ (inputs.platform == 'all platforms' || inputs.platform == 'linux') && inputs.updaterGeneration != 'native' && !inputs.verifyPublishedOnly }}
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ github.event.inputs.repoOwner }}/${{ github.event.inputs.repoName }}
-          ref: main
-
-      - name: Get latest release if version not specified
-        if: false
-        id: latest_release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const release = await github.rest.repos.getLatestRelease({
-              owner: '${{ github.event.inputs.repoOwner }}',
-              repo: '${{ github.event.inputs.repoName }}'
-            });
-            core.setOutput('version', release.data.tag_name);
-
-      - name: Get specific release if version specified
-        if: success()
-        id: specific_release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: '${{ github.event.inputs.repoOwner }}',
-              repo: '${{ github.event.inputs.repoName }}',
-              tag: '${{ needs.resolve.outputs.tag }}'
-            });
-            core.setOutput('version', release.data.tag_name);
-
       - name: Generate Appcast.xml
-        working-directory: frontend/appflowy_flutter
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          CRITICAL: ${{ inputs.criticalUpdate }}
         run: |
-          VERSION=${{ steps.latest_release.outputs.version || steps.specific_release.outputs.version }}
-          if [ "${{ github.event.inputs.releaseVersionNumber }}" != "" ]; then
-            RELEASE_VERSION_NUMBER=${{ github.event.inputs.releaseVersionNumber }}
-          else
-            RELEASE_VERSION_NUMBER=$VERSION
-          fi
-
-          echo "VERSION: $VERSION"
-
+          set -euo pipefail
+          RELEASE_VERSION_NUMBER=${TAG#v}
           APPCAST_FILE_NAME="appcast-linux-x86_64.xml"
 
           # Create appcast.xml
@@ -332,7 +306,7 @@ jobs:
           echo "            <title>Version $RELEASE_VERSION_NUMBER</title>" >> $APPCAST_FILE_NAME
           echo "            <sparkle:version>2</sparkle:version>" >> $APPCAST_FILE_NAME
           echo "            <sparkle:shortVersionString>$RELEASE_VERSION_NUMBER</sparkle:shortVersionString>" >> $APPCAST_FILE_NAME
-          if [ "${{ github.event.inputs.criticalUpdate }}" = "true" ]; then
+          if [ "$CRITICAL" = "true" ]; then
               echo "            <sparkle:criticalUpdate>true</sparkle:criticalUpdate>" >> $APPCAST_FILE_NAME
           fi
           echo "            <pubDate>$(date -R)</pubDate>" >> $APPCAST_FILE_NAME
@@ -351,19 +325,108 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: appcast-linux-x86_64.xml
-          path: |
-            frontend/appflowy_flutter/appcast-linux-x86_64.xml
+          path: appcast-linux-x86_64.xml
           if-no-files-found: error
           compression-level: 0
 
-  update-release-version:
-    runs-on: ubuntu-latest
+  delivery:
+    name: ${{ inputs.testOnly && 'Validate staged feeds' || 'Verify public feeds and client discovery' }}
     needs: [resolve, native, linux-x86_64]
     if: >-
-      always() && !inputs.testOnly && needs.resolve.result == 'success' &&
-      (needs.native.result == 'success' || needs.native.result == 'skipped') &&
-      (needs.linux-x86_64.result == 'success' || needs.linux-x86_64.result == 'skipped') &&
-      (needs.native.result == 'success' || needs.linux-x86_64.result == 'success')
+      always() && !cancelled() && needs.resolve.result == 'success' &&
+      (inputs.verifyPublishedOnly ||
+      ((inputs.platform == 'linux' || needs.native.result == 'success') &&
+      ((inputs.platform != 'linux' && inputs.platform != 'all platforms') ||
+      inputs.updaterGeneration == 'native' || needs.linux-x86_64.result == 'success')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: desktop-update-delivery-${{ inputs.repoOwner }}-${{ inputs.repoName }}-${{ needs.resolve.outputs.tag }}-${{ (inputs.testOnly || inputs.verifyPublishedOnly) && github.run_id || 'publish' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.verifyPublishedOnly }}
+        with:
+          pattern: '*appcast-*.xml'
+          merge-multiple: true
+          path: feeds
+      - name: Validate selected feed set and delivery
+        env:
+          REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          RELEASE_ID: ${{ needs.resolve.outputs.release_id }}
+          SOURCE: ${{ needs.resolve.outputs.source }}
+          PLATFORM: ${{ inputs.platform }}
+          GENERATION: ${{ inputs.updaterGeneration || 'both' }}
+        run: |
+          python3 scripts/desktop_update_delivery.py deliver --mode "$DELIVERY_MODE" --repository "$REPOSITORY" \
+            --tag "$TAG" --release-id "$RELEASE_ID" --source "$SOURCE" --platform "$PLATFORM" --generation "$GENERATION"
+
+  installed-upgrade:
+    name: Installed ${{ needs.resolve.outputs.source }} → ${{ needs.resolve.outputs.tag }} (${{ matrix.os }} ${{ matrix.arch }})
+    needs: [resolve, delivery]
+    if: >-
+      always() && !cancelled() && needs.delivery.result == 'success' &&
+      !inputs.testOnly && needs.resolve.outputs.source != ''
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_TAG: ${{ needs.resolve.outputs.source }}
+      TARGET_TAG: ${{ needs.resolve.outputs.tag }}
+      REPOSITORY: ${{ inputs.repoOwner }}/${{ inputs.repoName }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify and install the previous public release
+        run: python scripts/update_e2e/install_previous.py
+      - name: Use the Update button and verify the new app
+        if: runner.os == 'macOS'
+        working-directory: scripts/update_e2e/macos_ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          gem list -i xcodeproj -v 1.27.0 || gem install --user-install --no-document xcodeproj -v 1.27.0
+          ruby project.rb
+          TEST_RUNNER_RELEASED_APP_PATH="$APP_PATH" TEST_RUNNER_SOURCE_VERSION="${SOURCE_TAG#v}" \
+            TEST_RUNNER_TARGET_VERSION="${TARGET_TAG#v}" \
+            xcodebuild test -project UpgradeValidation.xcodeproj -scheme ReleasedUpgradeUITests \
+            -destination "platform=macOS,arch=$(uname -m)" -parallel-testing-enabled NO \
+            -resultBundlePath "$GITHUB_WORKSPACE/evidence/upgrade.xcresult"
+          python "$GITHUB_WORKSPACE/scripts/verify_native_update.py" macos-bundle --bundle "$APP_PATH" --version "${TARGET_TAG#v}"
+          codesign --verify --strict --deep "$APP_PATH"
+      - name: Use the Update button and verify the new app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/update_e2e/windows_ui.ps1
+      - name: Upload installed upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-upgrade-${{ matrix.os }}-${{ matrix.arch }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  update-release-version:
+    runs-on: ubuntu-latest
+    needs: [resolve, delivery, installed-upgrade]
+    if: >-
+      always() && !cancelled() && !inputs.testOnly && !inputs.verifyPublishedOnly &&
+      needs.delivery.result == 'success' &&
+      (needs.installed-upgrade.result == 'success' ||
+      (needs.resolve.outputs.source == '' && needs.installed-upgrade.result == 'skipped'))
 
     steps:
       - uses: actions/checkout@v4
