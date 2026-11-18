@@ -1,0 +1,52 @@
+name: Verify published desktop update
+run-name: Verify live discovery for staging run ${{ inputs.stagingRunId }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      stagingRunId:
+        description: "Successful Auto Update run whose XML files were copied to the release"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    name: Verify published feeds and desktop update API
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STAGING_RUN: ${{ inputs.stagingRunId }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Pin the successful staging attempt
+        id: staging
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_RUN" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGING_RUN" > staging-run.json
+          jq -e '.path == ".github/workflows/auto_update.yaml" and .event == "workflow_dispatch" and
+            .status == "completed" and .conclusion == "success"' staging-run.json
+          # Rerunning just the defaults commit can leave the valid receipt in an earlier attempt.
+          ATTEMPT=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$STAGING_RUN/jobs?filter=all&per_page=100" \
+            --jq '.jobs[] | select(.name == "Verify staged upgrade" and .conclusion == "success") | .run_attempt' | sort -nr | head -1)
+          [[ "$ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          echo "attempt=$ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: staged-desktop-update-${{ steps.staging.outputs.attempt }}
+          run-id: ${{ inputs.stagingRunId }}
+          github-token: ${{ github.token }}
+          path: receipt
+      - name: Check exact public bytes and live native discovery
+        env:
+          ATTEMPT: ${{ steps.staging.outputs.attempt }}
+        run: |
+          python3 scripts/desktop_update_delivery.py verify-published --stage-run-id "$STAGING_RUN" \
+            --attempt "$ATTEMPT" --receipt receipt/staged-desktop-update.json

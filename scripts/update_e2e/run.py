@@ -154,26 +154,32 @@ def package_fixture(case, target, version):
     return case / "update.exe"
 
 
-def feed_xml(case, base_url, installer, signature, version, build):
-    root = ET.Element("rss", version="2.0")
-    channel = ET.SubElement(root, "channel")
-    ET.SubElement(channel, "title").text = "AppFlowy isolated update test"
-    item = ET.SubElement(channel, "item")
-    ET.SubElement(item, f"{{{SPARKLE}}}version").text = build
-    ET.SubElement(item, f"{{{SPARKLE}}}shortVersionString").text = version
-    attributes = {
-        "url": f"{base_url}/{installer.name}", "length": str(installer.stat().st_size),
-        "type": "application/octet-stream",
-        f"{{{SPARKLE}}}version": build,
-        f"{{{SPARKLE}}}shortVersionString": version,
-        f"{{{SPARKLE}}}{'edSignature' if PLATFORM == 'macos' else 'dsaSignature'}": signature,
-    }
+def feed_xml(case, base_url, installer, signature, version, build, appcast=None, install_dir=None):
+    if appcast:
+        root = ET.parse(appcast).getroot()
+        enclosure = root.find("channel/item/enclosure")
+        if enclosure is None:
+            raise ValueError("Generated feed has no installer enclosure")
+    else:
+        root = ET.Element("rss", version="2.0")
+        channel = ET.SubElement(root, "channel")
+        ET.SubElement(channel, "title").text = "AppFlowy isolated update test"
+        item = ET.SubElement(channel, "item")
+        ET.SubElement(item, f"{{{SPARKLE}}}version").text = build
+        ET.SubElement(item, f"{{{SPARKLE}}}shortVersionString").text = version
+        enclosure = ET.SubElement(item, "enclosure", {
+            "length": str(installer.stat().st_size), "type": "application/octet-stream",
+            f"{{{SPARKLE}}}{'edSignature' if PLATFORM == 'macos' else 'dsaSignature'}": signature,
+        })
+    # Route the same signed bytes through the isolated test server. The live
+    # gate separately consumes the unmodified public URL via the released app.
+    enclosure.set("url", f"{base_url}/{installer.name}")
     if PLATFORM == "windows":
-        attributes[f"{{{SPARKLE}}}installerArguments"] = (
-            f'/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="{case / "install"}" '
+        install_dir = install_dir or case / "install"
+        enclosure.set(f"{{{SPARKLE}}}installerArguments", (
+            f'/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="{install_dir}" '
             f'/LOG="{case / "installer.log"}"'
-        )
-    ET.SubElement(item, "enclosure", attributes)
+        ))
     (case / "appcast.xml").write_bytes(ET.tostring(root, encoding="utf-8", xml_declaration=True))
 
 
@@ -254,14 +260,78 @@ def assert_candidate(case, host, args):
     # entry, so the controller explicitly launches the installed Windows app.
     if PLATFORM == "windows":
         subprocess.Popen([str(host)], cwd=host.parent)
-    launched = wait_for("installed AppFlowy process", lambda: [
-        p for p in processes_under(case / "install") if Path(p.exe()).resolve() == executable(host).resolve()
-    ])
+    launched = wait_for("installed AppFlowy process", lambda: processes_under(executable(host)))
     pid = launched[0].pid
     time.sleep(15)
-    if not any(p.pid == pid for p in processes_under(case / "install")):
+    if not any(p.pid == pid for p in processes_under(executable(host))):
         raise AssertionError("The installed AppFlowy process exited during its startup smoke test")
     return pid
+
+
+def exercise_previous(work, deps, args):
+    """Drive the native updater against a genuine previous installation, before publication."""
+    case = work / "candidate"
+    case.mkdir()
+    host = args.previous_app.resolve(strict=True)
+    report = work.parent / "reports/candidate"
+    report.mkdir(parents=True)
+    result = dict(scenario="candidate", platform=PLATFORM, source_version=args.source_version,
+                  target_version=args.version, source_path=str(host))
+    try:
+        installer = case / ("update.dmg" if PLATFORM == "macos" else "update.exe")
+        shutil.copy2(args.installer, installer)
+        signature = args.signature_file.read_text().strip()
+        verify_installer_signature(PLATFORM, installer, signature)
+        result["installer_sha256"] = sha256(installer)
+        result["feed_sha256"] = sha256(args.appcast)
+        before = sha256(executable(host))
+        with server(case) as base, (report / "console.log").open("wb") as log:
+            feed = f"{base}/appcast.xml"
+            feed_xml(case, base, installer, signature, args.version, args.build_version, args.appcast, host.parent)
+            if PLATFORM == "macos":
+                validate_macos_bundle(host, args.source_version)
+                run("open", "-n", host)
+                old = wait_for("running previous release", lambda: processes_under(executable(host)))[0]
+                result["source_pid"] = old.pid
+                # Sparkle's CLI accepts the same update on behalf of the test user.
+                # Both its host and its relaunch target are the unmodified old app.
+                cli = work / "dependencies/sparkle.app/Contents/MacOS/sparkle"
+                run(cli, "--check-immediately", "--feed-url", feed, "--user-agent-name", "AppFlowy CI",
+                    "--verbose", host, timeout=240, stdout=log, stderr=subprocess.STDOUT)
+                old.wait(timeout=90)
+            else:
+                validate_windows_bundle(host)
+                # WinSparkle reads keys/version from its host executable. The driver
+                # uses the verified old app's version, matching key and shipped DLL.
+                driver = build_windows(case / "driver", deps, args.source_version, public_key_for("windows"))
+                shutil.copy2(host.parent / "WinSparkle.dll", driver.parent / "WinSparkle.dll")
+                (case / "feed-url.txt").write_text(feed)
+                (case / "target-version.txt").write_text(args.version)
+                run(driver, timeout=240, stdout=log, stderr=subprocess.STDOUT)
+                events = {e["event"] for e in records(case / "events.jsonl")}
+                if not {"found", "installing", "terminated"} <= events or {"error", "no-update"} & events:
+                    raise ValueError(f"Previous Windows updater did not install the candidate: {events}")
+            requests = {row["path"].split("?")[0] for row in records(case / "http.jsonl")}
+            if not {"/appcast.xml", f"/{installer.name}"} <= requests:
+                raise ValueError("The updater did not request both the staged feed and signed installer")
+            wait_for("signed target replacing the previous release", lambda: executable(host).exists()
+                     and sha256(executable(host)) != before)
+            result["installed_pid"] = assert_candidate(case, host, args)
+            result["status"] = "passed"
+    except Exception:
+        result.update(status="failed", error=traceback.format_exc())
+        print(result["error"], flush=True)
+    finally:
+        for process in processes_under(executable(host)):
+            try:
+                process.terminate()
+            except psutil.NoSuchProcess:
+                pass
+        for name in ("http.jsonl", "events.jsonl", "installer.log", "appcast.xml"):
+            if (case / name).is_file():
+                shutil.copy2(case / name, report / name)
+        (report / "result.json").write_text(json.dumps(result, indent=2))
+    return result
 
 
 def exercise(root, deps, scenario, args):
@@ -295,12 +365,14 @@ def exercise(root, deps, scenario, args):
                 installer = package_fixture(case, target, version)
                 signature = sign(private, installer)
             summary["installer_sha256"] = sha256(installer)
+            if args.appcast:
+                summary["feed_sha256"] = sha256(args.appcast)
             if scenario == "bad-signature":
                 wrong = ed25519.Ed25519PrivateKey.generate() if PLATFORM == "macos" else dsa.generate_private_key(1024)
                 signature = sign(wrong, installer)
             elif scenario == "single-hash":
                 signature = base64.b64encode(private.sign(installer.read_bytes(), hashes.SHA1())).decode()
-            feed_xml(case, base, installer, signature, version, args.build_version or version)
+            feed_xml(case, base, installer, signature, version, args.build_version or version, args.appcast)
             with (case / "console.log").open("wb") as console:
                 process = subprocess.Popen([str(executable(host))], stdout=console, stderr=subprocess.STDOUT)
                 expected = "skipped" if scenario == "skip" else "error" if scenario in ("bad-signature", "missing-key", "single-hash") else "terminated" if candidate else "relaunched"
@@ -373,6 +445,9 @@ def main():
     parser.add_argument("--scenario", choices=("success", "bad-signature", "missing-key", "skip", "single-hash"))
     parser.add_argument("--installer", type=Path, help="Final signed release installer (CI only)")
     parser.add_argument("--signature-file", type=Path)
+    parser.add_argument("--appcast", type=Path, help="Generated release feed to exercise")
+    parser.add_argument("--previous-app", type=Path, help="Verified previous public installation on the disposable runner")
+    parser.add_argument("--source-version")
     parser.add_argument("--version")
     parser.add_argument("--build-version")
     parser.add_argument("--winsparkle-version", choices=("0.8.1", "0.9.4"), default="0.9.4")
@@ -384,8 +459,10 @@ def main():
             parser.error("Production installer tests require a disposable GitHub-hosted runner")
         if not args.signature_file or not args.version or args.scenario:
             parser.error("--installer requires --signature-file and --version, without --scenario")
-    elif args.signature_file or args.version or args.build_version:
+    elif args.signature_file or args.version or args.build_version or args.appcast or args.previous_app or args.source_version:
         parser.error("Release metadata requires --installer")
+    if args.previous_app and (not args.appcast or not args.source_version):
+        parser.error("--previous-app requires --appcast and --source-version")
     if args.scenario in ("missing-key", "skip") and PLATFORM != "macos":
         parser.error("This scenario is macOS-only")
     if args.scenario == "single-hash" and PLATFORM != "windows":
@@ -399,7 +476,7 @@ def main():
     results = []
     for scenario in scenarios:
         print(f"Running {PLATFORM}: {scenario}", flush=True)
-        results.append(exercise(work, deps, scenario, args))
+        results.append(exercise_previous(work, deps, args) if args.previous_app else exercise(work, deps, scenario, args))
         print(f"{scenario}: {results[-1]['status']}", flush=True)
     (output / "reports/results.json").write_text(json.dumps(results, indent=2))
     return 0 if all(result["status"] == "passed" for result in results) else 1

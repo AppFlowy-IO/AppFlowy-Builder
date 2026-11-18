@@ -49,20 +49,17 @@ secrets are used; no new secrets or test channel are required. `testOnly` allows
 drafts and skips the version-config commit. It uploads test evidence and feed
 artifacts; it does not publish a release or upload assets to a release.
 
-Candidate tests use an instrumented native source host with AppFlowy's bundle
-identity and deployed public key. They download, validate and install the exact
-signed release bytes, check the installed key/version/updater, and require the
-installed AppFlowy process to survive 15 seconds. Sparkle relaunches AppFlowy;
-on Windows the controller launches it after Inno Setup completes, because the
-production installer has no `[Run]` entry. Only GitHub-hosted runners can execute
-this mode, so an installed AppFlowy profile is never reused.
+The candidate gate installs the real previous stable release. It serves the
+generated feed on loopback with the enclosure URL routed to the identical signed
+bytes. Windows adds silent Inno arguments for the disposable runner. On macOS
+Sparkle's command-line user driver updates and relaunches the previous bundle.
+On Windows the driver uses the previous application's WinSparkle DLL, version
+and matching update key. It checks that Inno upgrades the existing executable
+in place, then starts the target. A separate fixture exercises WinSparkle 0.8.1.
 
-These tests cover the native installer boundary. They do **not** exercise the
-unchanged 0.14.7 Flutter client, cloud release discovery, server compatibility
-policy, the in-app consent UI, or document/database migration. A fixture data
-sentinel is not a workspace migration test. Validating those requires a separate
-full-client test channel and test account. The candidate key/library checks
-guard the following update; they do not claim to perform candidate → N+1.
+The stage records the versions, installer digest, HTTP requests and installed
+process. The public feed copy and server discovery check take place after this
+workflow succeeds. See [Desktop auto-update checks](../../README.md#desktop-auto-update-checks).
 
 ## Run fixtures locally
 

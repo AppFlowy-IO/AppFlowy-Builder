@@ -160,27 +160,46 @@ and a DLL that lacks PDFium's exports. Unit tests run with
 - Click the `Run workflow` button.
 - Enter the required variables as prompted.
 
-### Legacy and native desktop updater feeds
+## Desktop auto-update checks
 
-Dispatch `auto_update.yaml` with `updaterGeneration` set to `both` (default),
-`legacy`, or `native`. Omitted values from existing dispatch scripts mean `both`.
-Each selected macOS/Windows installer is downloaded and signed once; both feed
-variants share its signature, byte length, real build version, display version,
-compatibility metadata and critical-update marker.
+**Auto Update Workflow finishes before feed publication.** Select a tag such as
+`0.15.1`. The default selection covers both Mac architectures, Windows x64 and
+the Linux legacy notification.
 
-| Generation | Release asset / workflow artifact | Discovery |
-| --- | --- | --- |
-| Legacy | `appcast-{os}-{arch}.xml` | Existing clients use GitHub's latest-release URL |
-| Native | `native-appcast-{os}-{arch}.xml` | New clients receive a version-pinned URL from their server |
+1. Builder resolves the previous published stable version (for example,
+   `0.15.0`), verifies its release installer and installs it on a standard hosted
+   runner. It signs the target installer and generates the selected XML feeds.
+2. A loopback HTTP server serves the candidate feed and the signed installer.
+   Sparkle upgrades the installed Mac bundle and relaunches it. On Windows a
+   test driver uses the previous installation’s WinSparkle DLL and matching key
+   to run Inno Setup against the existing installation, then starts the updated
+   executable. The tests check both requests, the installed target version and
+   process startup. The app’s Flutter button and the live update API are outside
+   this staging check.
+3. **Verify staged upgrade** checks every selected XML filename and matches the
+   installer digest to the successful upgrade evidence. The run saves the XML
+   artifacts and a JSON record of their SHA-256 hashes. On a normal run Builder
+   then advances its release version default. `testOnly=true` also accepts drafts
+   and skips the defaults commit.
+4. After the run succeeds, copy its XML artifacts unchanged to the same GitHub
+   release. Run **Verify published desktop update** with the successful staging
+   run ID. This read-only workflow checks the tagged and latest public URLs
+   against the recorded hashes. For every selected native platform, the live
+   API must return the correct version, enabled policy, exact appcast and matching
+   installer for a client on the previous version. It allows up to 20 minutes
+   for the server’s release cache to refresh.
 
-Publish the selected artifacts to the matching release with these exact filenames.
-Do not overwrite a legacy filename with only a native-prefixed asset. Linux retains
-its legacy feed only; `native` plus `linux` generates no feeds and does not advance
-the release default. Generation does not upload assets to a release automatically.
+| Selection | Feeds |
+| --- | --- |
+| `legacy` | `appcast-{os}-{arch}.xml`, discovered through GitHub’s latest release |
+| `native` | `native-appcast-{os}-{arch}.xml`, discovered through the deployment’s update API |
+| `both` | Both filenames for each native target, plus the Linux legacy feed when selected |
 
-The Admin toggle governs only new clients. Legacy clients do not query that policy;
-selecting `native` skips generating legacy feeds but does not remove previously
-published legacy assets. If older clients must stay on a different target version,
-generate their legacy feed separately with that target's `appflowyVersion`; any
-publication through a moving latest-release URL must be coordinated explicitly.
-No workflow run or release publication is implied by merging this workflow.
+Both filenames must be attached even when their hashes match. Linux supports
+only the legacy notification. See [Native updater CI](scripts/update_e2e/README.md)
+for fixture coverage and rehearsal commands.
+
+```sh
+gh workflow run verify-published-desktop-update.yaml --repo AppFlowy-IO/AppFlowy-Builder \
+  -f stagingRunId="$STAGING_RUN_ID"
+```
